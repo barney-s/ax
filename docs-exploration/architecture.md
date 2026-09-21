@@ -100,3 +100,12 @@ sequenceDiagram
     
     Ctrl->>DB: Update Task status to "Running", set condition "Ready: True"
 ```
+
+---
+
+## Known Status & Lifecycle Limitations
+
+As of the **v0.3.0** release, there is a known limitation in how AX tracks task lifecycles (see **Issue #346**):
+- **Command Termination:** Once a Task reaches the `Running` phase and `Ready: True` is set, the controller does not continuously monitor if the user command has exited or if the underlying container process group has terminated.
+- **Indefinite Running Status:** A task will continue to report `Running` and `Ready: True` even after the user command exits (either successfully or with a non-zero exit code), or if the Substrate actor transitions to `ACTOR_STATE_CRASHED`.
+- **Planned Work:** Enhancing the reconciliation loop or metadata service to report process health status and capture exit codes to transition tasks into terminal phases (`Succeeded`/`Failed`).

@@ -4,9 +4,10 @@ These notes identify open questions, architectural limits, and details not fully
 
 ---
 
-## 1. Event Redelivery and Queue Reliability
+## 1. Event Redelivery and Queue Reliability (Resolved/Confirmed)
 - **Observation:** `internal/controller/worker.go` consumes events from Redis Streams via `XREADGROUP` and processes them. Every event is acknowledged via `Ack` even if `Reconcile` fails (to prevent a bad task from wedging the queue).
 - **Ambiguity:** If an `ax-controller` worker crashes *during* the execution of `processEvent` (before `Ack` is called), the event remains in the Redis Stream pending list. Does AX have a garbage collection or retry mechanism (e.g., via `XPENDING` / `XCLAIM`) to reclaim and reassign stalled tasks to other alive controller workers?
+- **September 2026 Update:** This has been confirmed as a real architectural gap under **Issue #351**. There is currently no recovery or claiming mechanism for unacknowledged/stranded tasks, which can leave tasks in a pending state indefinitely if a worker crashes before acknowledging them.
 
 ## 2. Egress Gateway Composite Security Policies
 - **Observation:** `TaskSpec` supports exactly one `GatewayRef` (`gateway`).
