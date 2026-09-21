@@ -1,6 +1,6 @@
 # AX Code Map
 
-This document maps the repository's directory layout, identifies main executable entry points, and highlights the ~20 files that are most critical to understand.
+This document maps the repository's directory layout, identifies main executable entry points, and highlights the critical files that are most important to understand.
 
 ---
 
@@ -28,10 +28,11 @@ This document maps the repository's directory layout, identifies main executable
 - `cmd/ax-server/main.go`: API server executing gRPC/HTTP endpoints, writing to Redis.
 - `cmd/ax-controller/main.go`: Horizontal scaling reconciling worker daemon.
 - `cmd/ax-task-runner/main.go`: Container entrypoint binary wrapping the `runner` package.
+- `cmd/ax-task-runner/antigravity_bootstrap.py`: Python script invoked inside the sandbox container to run the `google-antigravity` agent for workspace setup goals.
 
 ---
 
-## Top 15 Files That Matter Most
+## Top 17 Files That Matter Most
 
 ### Schemas & APIs
 1. `pkg/apis/v1alpha1/ax.proto`: Protobuf schema defining `Task`, `Workspace`, `Gateway`, `Model`, and control service RPCs. **CRITICAL: Modifying this requires rebuilding generated code (`ax.pb.go`, `ax_grpc.pb.go`).**
@@ -54,14 +55,18 @@ This document maps the repository's directory layout, identifies main executable
 ### Inside the Sandbox (Workloads)
 11. `runner/runner.go`: **CAUTION: Core container runtime supervisor.** Performs maiden workspace setup, starts metadata servers, launches client tasks, and manages SIGTERM/graceful termination of child processes.
 12. `internal/workspace/setup.go`: Prepares the workspace filesystem (clones repos, handles skills, boots antigravity helper scripts).
-13. `internal/workspace/planner.go`: Interacts with LLM models to synthesize execution/bootstrap setup instructions.
-14. `internal/metadata/server.go`: Implements the container metadata HTTP endpoints (`/metadata/...`) and handles `/readyz` workspace setup status reports.
-15. `internal/guest/client.go`: Handles the in-sandbox guest daemon interface, allowing secure gRPC filesystem access and shell execution that powers `ax ssh`.
+13. `cmd/ax-task-runner/antigravity_bootstrap.py`: Connects to Gemini via the `google-antigravity` Python SDK to autonomously fulfill setup goals specified in workspace references.
+14. `internal/workspace/planner.go`: Interacts with LLM models to synthesize execution/bootstrap setup instructions.
+15. `internal/metadata/server.go`: Implements the container metadata HTTP endpoints (`/metadata/...`) and handles `/readyz` workspace setup status reports.
+16. `internal/guest/client.go`: Handles the in-sandbox guest daemon interface, allowing secure gRPC filesystem access and shell execution that powers `ax ssh`.
+
+### Build & Tooling
+17. `Dockerfile.task-runner`: Specifies the sandbox container environment (Python 3.12, git, curl, `google-antigravity` library, and the `ax-task-runner` binary).
 
 ---
 
 ## Modifying Cautions ⚠️
 
 - **`pkg/apis/v1alpha1/ax.proto`:** Changing field IDs or types can break compatibility between running `ax-server`, `ax-controller` and older compiled `ax` CLI binaries. Avoid removing fields; prefer using `reserved` numbers.
-- **`runner/runner.go`:** Any modification to process execution, signals, or process groups can result in orphaned zombie processes inside sandboxes or blocked gracefully-shutting-down containers. Keep edits here clean and verified under multiple signal contexts.
+- **`runner/runner.go`:** Any modification to process execution, signals, or process groups can result in orphaned zombie processes inside sandboxes or blocked gracefully-shut-down containers. Keep edits here clean and verified under multiple signal contexts.
 - **`internal/controller/reconciler.go`:** Governs external Substrate resources. Bad logic can lead to orphaned atespaces or actors, leaking infrastructure resources.
