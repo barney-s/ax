@@ -30,3 +30,7 @@ These notes identify open questions, architectural limits, and details not fully
 ## 6. Workspace Setup Integrity and Error Propagation
 - **Observation:** A `Workspace` git clone task initializes the git repo and remotes but may fail the fetch stage without raising an error.
 - **Ambiguity:** How are bootstrap and setup exit codes monitored during sandboxed startup? Currently, git fetch errors do not block the transition to `WorkspaceReady: True` / `SetupComplete` (**Issue #347**), leading to agents launching inside empty workspaces under the false assumption that setup succeeded.
+
+## 7. Strict Object Validation and Schema Enforcement
+- **Observation:** `UpdateTask` calls `v1alpha1.ValidateTask` to perform validation on task manifests before committing them to the Redis store.
+- **Ambiguity:** What are the exact constraints for resource requirements (CPU/Memory format) and metadata naming conventions? Is validation fully robust against nested field omission or invalid configurations, or is there a risk of passing malformed specifications to the reconciler and worker nodes, leading to runtime failures or crashes (e.g. Issue #349 nil-pointer panic)?

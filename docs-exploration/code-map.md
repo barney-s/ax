@@ -50,7 +50,7 @@ This document maps the repository's directory layout, identifies main executable
 ### Worker & Reconciler
 8. `internal/controller/worker.go`: Evaluates Redis Streams, manages worker consumer loops, processes reconcile/delete events, and writes status back to Redis.
 9. `internal/controller/reconciler.go`: **CRITICAL: The core state driver.** Coordinates with Agent Substrate to create atespaces, actors, custom templates, network rules, and handles actor suspend/resume logic.
-10. `internal/substrate/client.go`: High-performance gRPC wrapper client managing connections to the Agent Substrate Control API.
+10. `internal/substrate/client.go`: High-performance gRPC wrapper client managing connections to the Agent Substrate Control API (defaulting to target `api.ate-system.svc.cluster.local:443` with automatic token and CA trust-bundle detection).
 
 ### Inside the Sandbox (Workloads)
 11. `runner/runner.go`: **CAUTION: Core container runtime supervisor.** Performs maiden workspace setup, starts metadata servers, launches client tasks, and manages SIGTERM/graceful termination of child processes.
@@ -59,9 +59,10 @@ This document maps the repository's directory layout, identifies main executable
 14. `internal/workspace/planner.go`: Interacts with LLM models to synthesize execution/bootstrap setup instructions.
 15. `internal/metadata/server.go`: Implements the container metadata HTTP endpoints (`/metadata/...`) and handles `/readyz` workspace setup status reports.
 16. `internal/guest/client.go`: Handles the in-sandbox guest daemon interface, allowing secure gRPC filesystem access and shell execution that powers `ax ssh`.
+17. `internal/model/client.go`: Implements the integration client for Google Gemini LLMs and resolves named model configurations (`default-model`), system instructions, parameters, and API keys.
 
 ### Build & Tooling
-17. `Dockerfile.task-runner`: Specifies the sandbox container environment (Python 3.12, git, curl, `google-antigravity` library, and the `ax-task-runner` binary).
+18. `Dockerfile.task-runner`: Specifies the sandbox container environment (Python 3.12, git, curl, `google-antigravity` library, and the `ax-task-runner` binary).
 
 ---
 

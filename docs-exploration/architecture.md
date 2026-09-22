@@ -48,13 +48,13 @@ AX is designed around a fast Redis store and stream queue that separates the API
 Allows developers to interact with the control plane: apply/get/describe manifests, watch status, suspend/resume tasks, or tunnel (`ax ssh`) to active sandboxes.
 
 ### 2. `ax-server`
-Stateless gRPC API server serving port 8080. Validates incoming resource definitions, persists them as protobuf-JSON strings inside Redis keys, and publishes event payloads onto the Redis Stream work queue.
+Stateless gRPC API server multiplexing HTTP/1.1, unencrypted HTTP/2, and gRPC on port 8080 (configurable via `-addr` or `ADDR`). It validates incoming resource definitions (normalizing legacy schemas in `pkg/apis/v1alpha1/types.go`), persists them as protobuf-JSON strings inside Redis keys using transactional pipelines (`TxPipeline`), and publishes event payloads onto the Redis Stream work queue.
 
 ### 3. `ax-controller`
-Horizontally scaled task reconcilers consuming the Redis Stream via a shared consumer group (`ax-controllers`). Each worker processes events by driving sandboxes on Agent Substrate toward their desired state.
+Horizontally scaled task reconcilers subscribing to the Redis Stream via a shared consumer group (`ax-controllers`). Each worker processes events by communicating with the Agent Substrate Control API (gRPC `ateapipb.ControlClient` at `api.ate-system.svc.cluster.local:443`) to manage logical Atespaces, sandbox Actors, custom templates, and security network policies (Gateways).
 
 ### 4. `ax-task-runner`
-The entrypoint inside every Actor sandbox. It starts first, configures bound workspaces (clones git repos, sets up skills, runs `antigravity_bootstrap.py` for goals), spins up metadata/guest servers, and supervises the user command process.
+The container entrypoint binary (Go supervisor wrapping the `runner` package) executing inside every Actor sandbox on port 80 (configurable). It starts first, multiplexes cloud-style metadata endpoints (`/metadata/...`) and guest gRPC daemon services on a single port, prepares the bound workspaces (clones git repos via idempotent fetch with retry, runs `antigravity_bootstrap.py` for goal synthesis), reports readiness via `/readyz?check=workspace`, and supervises the user command process inside its own process group.
 
 ---
 
@@ -93,8 +93,8 @@ sequenceDiagram
     Run->>Run: Serve metadata and ready status on port 80
     Run->>Run: Launch agent command as supervised child process
     
-    loop Status Polling
-        Ctrl->>Run: GET /readyz?check=workspace
+    loop Status Polling (Direct IP or atenet-router)
+        Ctrl->>Run: GET /readyz?check=workspace (direct or with ate-target-actor header)
         Run-->>Ctrl: HTTP 200 (Ready)
     end
     
