@@ -11,6 +11,7 @@ This deployment **cannot** run purely in-pod or as mock processes. It requires a
 ### Why real infrastructure is forced:
 - **Agent Substrate integration**: The `ax-controller` integrates with the `Agent Substrate` Control API (running inside the GKE cluster at `api.ate-system.svc.cluster.local:443`) to orchestrate sandboxed execution environments.
 - **Node-level / Pod-level reality**: Orchestrating task isolation, projected ServiceAccount tokens, and ClusterTrustBundles (`servicedns-ca`) requires a real Kubernetes control plane and node cluster. If `ClusterTrustBundles` are unsupported on the GKE cluster, the controller must be run with `--substrate-insecure-tls` flag and without `--substrate-ca-file` to bypass CA verification.
+- **GCS Snapshots Bucket configuration**: The `ax-controller` requires the `AX_SNAPSHOTS_BUCKET` environment variable to be explicitly defined. If omitted or left as a placeholder, it will default to an inaccessible bucket name (`gs://snapshot-substrate-test-ax-substrate`), resulting in task suspension/checkpointing failing with a 403 PermissionDenied error.
 - **Image Registry requirement**: `ax-task-runner` must be hosted on a remote container registry (`GCR` or `Artifact Registry`) accessible by the GKE node kubelets. If local Docker/Podman environments are restricted (e.g. nested overlayfs operations are blocked), Google Cloud Build (`gcloud builds submit`) is the official fallback mechanism.
 
 ### Feasibility Checklist (Probed on Wednesday, September 23, 2026)
