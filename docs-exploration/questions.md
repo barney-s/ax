@@ -34,3 +34,7 @@ These notes identify open questions, architectural limits, and details not fully
 ## 7. Strict Object Validation and Schema Enforcement
 - **Observation:** `UpdateTask` calls `v1alpha1.ValidateTask` to perform validation on task manifests before committing them to the Redis store.
 - **Ambiguity:** What are the exact constraints for resource requirements (CPU/Memory format) and metadata naming conventions? Is validation fully robust against nested field omission or invalid configurations, or is there a risk of passing malformed specifications to the reconciler and worker nodes, leading to runtime failures or crashes (e.g. Issue #349 nil-pointer panic)?
+
+## 8. Skipped Runbook Scenario: Upgrade in-pod (September 23, 2026)
+- **Decision:** The `upgrade-in-pod` scenario has been skipped.
+- **Rationale:** Under local or single-process execution (in-pod development), there are no complex orchestrations or rolling state transitions. Re-deploying or upgrading AX locally is functionally identical to recompiling the binaries via `make build` and restarting the local `ax-server` and `ax-controller` processes. Therefore, drafting a dedicated `upgrade-in-pod.md` runbook does not demonstrate anything unique, and the process is fully covered under the `deploy-in-pod.md` steps.
