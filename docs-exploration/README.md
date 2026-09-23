@@ -6,6 +6,7 @@ These documents are kept up-to-date and reflect the actual system architecture a
 
 ## Index (Freshest First)
 
+- [runbook-deployments/instance1/receipt-20260923-2149.md](runbook-deployments/instance1/receipt-20260923-2149.md) *(Sept 23, 2026)* — Execution receipt for the `instance1` deployment instance on GCP GKE, validating full GCP provisioning, Substrate installation with GKE JWT mode, and standalone, privileged, SPIFFE-certified worker pools.
 - [runbook-deployments/ak-ate-1/receipt-20260923-0836.md](runbook-deployments/ak-ate-1/receipt-20260923-0836.md) *(Sept 23, 2026)* — Execution receipt for the `ak-ate-1` deployment instance on GCP GKE, verifying full GCP GKE provisioning, Substrate installation, and correcting the AX Controller snapshots bucket config to achieve a successful task suspension and checkpointing flow.
 - [runbook-deployments/ak-ate-1/receipt-20260923-0755.md](runbook-deployments/ak-ate-1/receipt-20260923-0755.md) *(Sept 23, 2026)* — Execution receipt for the `ak-ate-1` deployment instance on GCP GKE, validating GKE provisioning, Substrate installation, WorkerPools, and full AX end-to-end task suspend/resume lifecycle.
 - [runbooks/upgrade-gcp.md](runbooks/upgrade-gcp.md) *(Sept 23, 2026)* — Upgraded & verified: Guides you through performing in-place rolling upgrades of the controller, server, and task-runner templates in GCP/GKE environments.

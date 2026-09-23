@@ -35,7 +35,7 @@ gcloud config set compute/region "${GCP_REGION}"
 
 # 1. Delete the GKE Cluster
 echo "==> Deleting GKE Cluster ${GKE_CLUSTER}..."
-gcloud container clusters delete "${GKE_CLUSTER}" --quiet || echo "GKE Cluster ${GKE_CLUSTER} deletion failed or already deleted."
+gcloud container clusters delete "${GKE_CLUSTER}" --zone "${GCP_REGION}-a" --quiet || echo "GKE Cluster ${GKE_CLUSTER} deletion failed or already deleted."
 
 # 2. Delete the GCS Snapshots Bucket
 echo "==> Deleting GCS snapshots bucket gs://${GCS_BUCKET}..."
