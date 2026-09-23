@@ -16,12 +16,13 @@ This scenario **needs real cloud infrastructure and real nodes**. It cannot run 
 - Approximately **$0.01 - $0.05 per hour** of cluster runtime (primarily standard GKE VM instance usage, e.g. `e2-standard-4`). Tearing down all resources immediately after validation keeps costs minimal.
 
 ### Feasibility Checklist
-- [x] **gcloud CLI**: Present (`gcloud version` shows active installation, active project: `barni-cnrm-20260529`)
-- [x] **kubectl CLI**: Present (Installed and ready)
-- [x] **Go 1.27+ Compiler**: Present (`go version` shows `go1.27.1`)
-- [ ] **ko CLI**: MISSING (Must be installed on the operator's machine via `go install github.com/google/ko@latest`)
-- [ ] **Docker / Podman Daemon**: MISSING (Must be installed and active to build the linux/amd64 task-runner container image)
-- [ ] **Agent Substrate Control Plane**: MISSING (Assumes Substrate control services are pre-installed or will be installed in the `ate-system` namespace on the GKE cluster)
+- [x] **gcloud CLI**: ✓ Present (`gcloud version` shows active installation, active project: `barni-cnrm-20260529`)
+- [x] **kubectl CLI**: ✓ Present (Installed and ready)
+- [x] **Go 1.27+ Compiler**: ✓ Present (`go version` shows `go1.27.1`)
+- [ ] **Helm CLI**: ✗ MISSING (Install on Linux/macOS via `curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash` or `brew install helm`)
+- [ ] **ko CLI**: ✗ MISSING (Install on the operator's machine via `go install github.com/google/ko@latest`)
+- [ ] **Docker / Podman Daemon**: ✗ MISSING (Install Docker and start the daemon to build the linux/amd64 task-runner container image)
+- [ ] **Agent Substrate Control Plane**: ✗ MISSING (To be installed during runbook execution using Helm)
 
 ### IAM Permissions Required
 The executing identity (`cnrm-barni-1.svc.id.goog`) requires the following IAM roles or permissions on the target GCP project:
@@ -36,6 +37,8 @@ The executing identity (`cnrm-barni-1.svc.id.goog`) requires the following IAM r
   - `storage.objects.delete`
 - **Artifact Registry Admin (`roles/artifactregistry.admin`)** or **Storage Admin**:
   - Writing and pushing Docker images to GCR/GAR.
+- **Security Admin (`roles/iam.admin`)** or **Project IAM Admin (`roles/resourcemanager.projectIamAdmin`)**:
+  - Creating GCP Service Accounts and binding IAM policies for Workload Identity.
 
 ---
 
@@ -78,7 +81,78 @@ gcloud storage buckets create "gs://${RESOURCE_PREFIX}-snapshots" \
 ```
 
 ### 3. Install Agent Substrate (Control Plane)
-Deploy the Agent Substrate platform operator and its routing service onto the GKE cluster. Follow the standard installation guidelines of the Agent Substrate project to ensure `api.ate-system.svc.cluster.local` is fully operational in the `ate-system` namespace.
+Deploy the Agent Substrate platform operator, daemonsets, and its routing service onto the GKE cluster. We configure GKE Workload Identity to authorize Agent Substrate and AX to read and write to the GCS snapshots bucket, and then deploy Substrate via Helm.
+
+#### 3a. Provision GCP Service Account & GCS IAM Roles
+Create a dedicated Google Cloud Service Account (GSA) and grant it administrative access to the GCS snapshots bucket:
+```bash
+# Create the Google Service Account
+gcloud iam service-accounts create "${RESOURCE_PREFIX}-sa" \
+  --project="${GCP_PROJECT}" \
+  --display-name="AX and Substrate GCS Service Account"
+
+# Grant the storage.objectAdmin role on the GCS snapshots bucket to the GSA
+gcloud storage buckets add-iam-policy-binding "gs://${RESOURCE_PREFIX}-snapshots" \
+  --member="serviceAccount:${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+```
+
+#### 3b. Bind Kubernetes Service Accounts (KSA) using Workload Identity
+Allow the Kubernetes Service Accounts (KSAs) used by Agent Substrate and AX to impersonate the GSA:
+```bash
+# Bind Substrate's controller KSA (in ate-system namespace)
+gcloud iam service-accounts add-iam-policy-binding "${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:${GCP_PROJECT}.svc.id.goog[ate-system/substrate-controller]" \
+  --project="${GCP_PROJECT}"
+
+# Bind Substrate's atelet daemon KSA (in ate-system namespace)
+gcloud iam service-accounts add-iam-policy-binding "${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:${GCP_PROJECT}.svc.id.goog[ate-system/atelet]" \
+  --project="${GCP_PROJECT}"
+
+# Bind AX's controller KSA (in ax-system namespace)
+gcloud iam service-accounts add-iam-policy-binding "${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:${GCP_PROJECT}.svc.id.goog[ax-system/ax-controller]" \
+  --project="${GCP_PROJECT}"
+```
+
+#### 3c. Pre-Create Namespaces and Annotate AX Controller
+Create the required namespaces and pre-annotate the AX controller service account so that it automatically inherits the GSA's permissions when deployed:
+```bash
+# Create namespaces
+kubectl create namespace ate-system || true
+kubectl create namespace ax-system || true
+
+# Pre-create and annotate the AX controller service account
+kubectl create serviceaccount ax-controller -n ax-system || true
+kubectl annotate serviceaccount ax-controller -n ax-system --overwrite \
+  "iam.gke.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
+```
+
+#### 3d. Install Agent Substrate CRDs
+Install the Agent Substrate Custom Resource Definitions (CRDs) via Helm OCI charts:
+```bash
+helm upgrade --install substrate-crds \
+  oci://ghcr.io/kagent-dev/substrate/helm/substrate-crds \
+  --version 0.0.9 \
+  --namespace ate-system --create-namespace --wait
+```
+
+#### 3e. Install Agent Substrate Platform
+Install the core Substrate operator, gateway, and daemonset, configuring them with GCS snapshots and GKE Workload Identity:
+```bash
+helm upgrade --install substrate \
+  oci://ghcr.io/kagent-dev/substrate/helm/substrate \
+  --version 0.0.9 \
+  --namespace ate-system \
+  --set controller.serviceAccount.annotations."iam\.gke\.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
+  --set atelet.serviceAccount.annotations."iam\.gke\.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
+  --set snapshotsConfig.location="gs://${RESOURCE_PREFIX}-snapshots/" \
+  --wait
+```
 
 ### 4. Build and Push the Task-Runner Image
 The `ax-task-runner` serves as the guest supervisor inside tasks. Package and push it to Google Container Registry (GCR) or Artifact Registry (GAR):
@@ -158,4 +232,8 @@ To avoid incurring continuous cloud costs, tear down the GCP resources once veri
 3. **Delete Published Images:** Remove the Artifact Registry / GCR images deployed for this instance:
    ```bash
    gcloud container images delete "${TASK_RUNNER_REPO}:latest" --force-delete-tags --quiet
+   ```
+4. **Delete GCP Service Account:**
+   ```bash
+   gcloud iam service-accounts delete "${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" --quiet
    ```
