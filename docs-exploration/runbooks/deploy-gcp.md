@@ -1,6 +1,6 @@
 # Runbook: Deploy AX to Google Cloud Platform (GCP)
 
-*Note: This revision adds steps to provision a GKE cluster and install Agent Substrate from source prior to deploying AX components.*
+*Note: This revision adds steps to provision a GKE cluster and install Agent Substrate from source prior to deploying AX components. Note that some required tools (ko, docker/podman) are currently missing in the workspace environment and must be installed first.*
 
 ---
 

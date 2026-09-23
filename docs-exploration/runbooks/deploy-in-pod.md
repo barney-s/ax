@@ -1,6 +1,6 @@
 # Runbook: Deploy AX In-Pod (Local Development & Test)
 
-This runbook guides you through building, testing, and running AX components entirely in-pod (locally within your workspace or development container) without requiring GCP cloud infrastructure or real Kubernetes environments.
+*Note: This revision is updated to accurately reflect local Redis availability and verify connectivity on port 8080. Some dependencies are missing in the local environment and must be installed prior to running.*
 
 ---
 
@@ -20,7 +20,7 @@ The following checklist represents the results of read-only probes executed unde
 * **Tools:**
   - `go` (v1.27+): ✓ present
   - `make`: ✓ present
-  - `redis-server` (or local Redis container): ✓ present (installed via `sudo apt-get update && sudo apt-get install -y redis-server`)
+  - `redis-server` (or local Redis container): ✗ MISSING — Fix: `sudo apt-get update && sudo apt-get install -y redis-server`
 
 * **Permissions & Environments:**
   - Local Sandbox write/execute permissions: ✓ present (You have write access to `/workspaces/ax` to build binaries and compile code).

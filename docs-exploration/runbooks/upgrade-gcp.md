@@ -1,5 +1,7 @@
 # Runbook: Upgrade AX in Google Cloud Platform (GCP)
 
+*Note: This revision is updated to align the task-runner upgrade process with the current Substrate template mechanism and verify post-upgrade task resumption. Note that some required tools (ko, docker/podman) and an active GKE cluster are currently missing in the workspace environment and must be configured first.*
+
 This runbook guides you through performing an in-place upgrade of the AX control plane components (ax-controller, ax-server) and the guest sandbox component (ax-task-runner) inside an existing Google Kubernetes Engine (GKE) cluster.
 
 ---
