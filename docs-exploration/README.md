@@ -6,6 +6,7 @@ These documents are kept up-to-date and reflect the actual system architecture a
 
 ## Index (Freshest First)
 
+- [runbook-deployments/ak-ate-1/receipt-20260923-0755.md](runbook-deployments/ak-ate-1/receipt-20260923-0755.md) *(Sept 23, 2026)* — Execution receipt for the `ak-ate-1` deployment instance on GCP GKE, validating GKE provisioning, Substrate installation, WorkerPools, and full AX end-to-end task suspend/resume lifecycle.
 - [runbooks/upgrade-gcp.md](runbooks/upgrade-gcp.md) *(Sept 23, 2026)* — Guides you through performing in-place rolling upgrades of the controller, server, and task-runner templates in GCP/GKE environments.
 - [runbooks/deploy-gcp.md](runbooks/deploy-gcp.md) *(Sept 23, 2026)* — Comprehensive guide to provisioning a GKE cluster, installing Agent Substrate from source, and deploying AX components on GCP GKE/GCS infrastructure.
 - [runbooks/deploy-in-pod.md](runbooks/deploy-in-pod.md) *(Sept 23, 2026)* — Executable guide for deploying AX locally inside a sandbox/pod for local testing, standalone mode, and in-process development.

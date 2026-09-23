@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # deploy.sh - Deploy Agent Substrate and AX to GCP for 'ak-ate-1'
 # This script is designed to run deterministically and traceably to the runbook.
+# Change: Added /workspaces/.home/go/bin to PATH to ensure ko and other installed Go binaries can be located. Exported CLUSTER_LOCATION and added get-credentials. Added AX_SNAPSHOTS_BUCKET replacement.
 set -euo pipefail
 
 # Locate script directory and source params.env
@@ -13,6 +14,8 @@ else
     echo "Error: params.env not found in ${SCRIPT_DIR}." >&2
     exit 1
 fi
+
+export PATH="/workspaces/.home/go/bin:${PATH}"
 
 WORKSPACE_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
@@ -37,8 +40,10 @@ echo "Creating .ate-dev-env.sh configuration..."
 cat <<EOF > .ate-dev-env.sh
 export PROJECT_ID="${PROJECT_ID}"
 export CLUSTER_NAME="${CLUSTER_NAME}"
+export CLUSTER_LOCATION="${CLUSTER_LOCATION}"
 export REGION="${REGION}"
 export ZONE="${ZONE}"
+export GCE_REGION="${GCE_REGION}"
 export BUCKET_NAME="${BUCKET_NAME}"
 export KO_DOCKER_REPO="${KO_DOCKER_REPO}"
 EOF
@@ -51,6 +56,8 @@ go run ./tools/setup-gcp bootstrap
 
 
 echo "=== Step 3: Install Agent Substrate components into the cluster ==="
+echo "Configuring kubectl credentials for GKE cluster..."
+gcloud container clusters get-credentials "${CLUSTER_NAME}" --zone "${CLUSTER_LOCATION}" --project="${PROJECT_ID}"
 echo "Installing Agent Substrate control and data plane services..."
 ./hack/install-ate.sh --deploy-ate-system
 
@@ -79,6 +86,7 @@ make deploy-redis
 
 
 echo "=== Step 6: Deploy the AX Controller ==="
+sed -i "s|AX_SNAPSHOTS_BUCKET_PLACEHOLDER|gs://${BUCKET_NAME}|g" deploy/ax-controller.yaml
 make deploy-controller
 
 

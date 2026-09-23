@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # teardown.sh - Stop and clean up GCP AX and Agent Substrate deployment for 'ak-ate-1'
+# Change: Updated cluster deletion to use zone instead of region.
 set -euo pipefail
 
 # Locate script directory and source params.env
@@ -43,8 +44,8 @@ fi
 echo "=== Teardown: Deleting GKE Cluster and GCS Storage Bucket ==="
 
 # 4. Delete the GKE cluster and GCS bucket to avoid continuing charges
-echo "4. Deleting GKE cluster '${CLUSTER_NAME}' in region '${REGION}'..."
-gcloud container clusters delete "${CLUSTER_NAME}" --region "${REGION}" --quiet || true
+echo "4. Deleting GKE cluster '${CLUSTER_NAME}' in zone '${CLUSTER_LOCATION}'..."
+gcloud container clusters delete "${CLUSTER_NAME}" --zone "${CLUSTER_LOCATION}" --quiet || true
 
 echo "Deleting GCS bucket 'gs://${BUCKET_NAME}'..."
 gcloud storage buckets delete "gs://${BUCKET_NAME}" --recursive --quiet || true

@@ -35,13 +35,16 @@ The following checklist represents the results of read-only probes executed unde
 ## Preconditions
 
 1. **Set target environment parameters**:
-   Export variables to target your GCP project and cluster settings:
+   Export variables to target your GCP project and cluster settings (ensure both `CLUSTER_LOCATION` and `GCE_REGION` are set to align Substrate with your GKE target):
    ```bash
    export PROJECT_ID="barni-cnrm-20260529" # (pinned)
    export CLUSTER_NAME="ics-1"           # (pinned)
    export REGION="us-central1"           # (pinned)
    export ZONE="us-central1-a"           # (pinned)
-   export BUCKET_NAME="ate-snapshots-${PROJECT_ID}"
+   export CLUSTER_LOCATION="${ZONE}"
+   export GCE_REGION="${REGION}"
+   # Avoid soft-delete and regional mismatches by appending the target region to the bucket name
+   export BUCKET_NAME="ate-snapshots-${PROJECT_ID}-us-central1"
    export AX_IMAGE_REPO="gcr.io/${PROJECT_ID}/ate-images"
    export TASK_RUNNER_REPO="${AX_IMAGE_REPO}/ax-task-runner"
    export KO_DOCKER_REPO="${AX_IMAGE_REPO}"
@@ -63,6 +66,16 @@ The following checklist represents the results of read-only probes executed unde
    gcloud auth configure-docker gcr.io --quiet
    ```
 
+5. **Create custom Cloud Build ignore file**:
+   Since `.gitignore` contains `bin/`, Cloud Build will ignore compiled binaries by default unless we define a custom ignore file that includes it:
+   ```bash
+   cat <<EOF > custom-gcloudignore
+   .git
+   .github
+   /tmp
+   EOF
+   ```
+
 ---
 
 ## Steps
@@ -77,8 +90,10 @@ The following checklist represents the results of read-only probes executed unde
    cat <<EOF > .ate-dev-env.sh
    export PROJECT_ID="${PROJECT_ID}"
    export CLUSTER_NAME="${CLUSTER_NAME}"
+   export CLUSTER_LOCATION="${CLUSTER_LOCATION}"
    export REGION="${REGION}"
    export ZONE="${ZONE}"
+   export GCE_REGION="${GCE_REGION}"
    export BUCKET_NAME="${BUCKET_NAME}"
    export KO_DOCKER_REPO="${KO_DOCKER_REPO}"
    EOF
@@ -91,10 +106,40 @@ The following checklist represents the results of read-only probes executed unde
    go run ./tools/setup-gcp bootstrap
    ```
 
-3. **Install Agent Substrate components into the cluster**:
-   Still inside the `/tmp/substrate` directory, install Agent Substrate control and data plane services under the `ate-system` namespace:
+3. **Install Agent Substrate and WorkerPool components**:
+   Fetch `kubectl` credentials, install Substrate services, publish worker images, and provision a `WorkerPool` in the `default` namespace so that Substrate can allocate workers for tasks:
    ```bash
+   # Configure kubectl context
+   gcloud container clusters get-credentials "${CLUSTER_NAME}" --zone "${CLUSTER_LOCATION}" --project="${PROJECT_ID}"
+   
+   # Deploy Substrate control plane
    ./hack/install-ate.sh --deploy-ate-system
+   
+   # Publish worker images (essential for WorkerPools)
+   go run ./cmd/ate-setup publish worker-images
+   
+   # Create a default WorkerPool matching GKE node labels
+   SUBSTRATE_VER=$(kubectl get nodes -o jsonpath='{.items[0].metadata.labels.ate\.dev/substrate-version}')
+   kubectl apply -f - <<EOF
+   apiVersion: ate.dev/v1alpha1
+   kind: WorkerPool
+   metadata:
+     name: default-pool
+     namespace: default
+   spec:
+     replicas: 2
+     workerImage: "gcr.io/${PROJECT_ID}/ate-images/ateom-gvisor:latest"
+     template:
+       nodeSelector:
+         ate.dev/substrate-version: "${SUBSTRATE_VER}"
+       resources:
+         limits:
+           cpu: "2"
+           memory: "2Gi"
+         requests:
+           cpu: "500m"
+           memory: "2Gi"
+   EOF
    ```
 
 4. **Build and push the AX Task Runner image**:
@@ -121,8 +166,9 @@ The following checklist represents the results of read-only probes executed unde
    ```
 
 6. **Deploy the AX Controller**:
-   The controller reconciles tasks from Redis Streams and provisions sandboxes through Agent Substrate. Deploy it using `ko`:
+   The controller reconciles tasks from Redis Streams and provisions sandboxes through Agent Substrate. Substitute the `AX_SNAPSHOTS_BUCKET_PLACEHOLDER` with the actual GCS snapshots bucket name inside the controller deployment manifest, then deploy using `ko`:
    ```bash
+   sed -i "s|AX_SNAPSHOTS_BUCKET_PLACEHOLDER|gs://${BUCKET_NAME}|g" deploy/ax-controller.yaml
    make deploy-controller
    ```
 
