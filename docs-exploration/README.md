@@ -7,7 +7,7 @@ These documents are kept up-to-date and reflect the actual system architecture a
 ## Index (Freshest First)
 
 - [runbooks/upgrade-gcp.md](runbooks/upgrade-gcp.md) *(Sept 23, 2026)* — Guides you through performing in-place rolling upgrades of the controller, server, and task-runner templates in GCP/GKE environments.
-- [runbooks/deploy-gcp.md](runbooks/deploy-gcp.md) *(Sept 23, 2026)* — Comprehensive guide to compiling, packaging, and deploying AX components on real GCP GKE/GCR infrastructure.
+- [runbooks/deploy-gcp.md](runbooks/deploy-gcp.md) *(Sept 23, 2026)* — Comprehensive guide to provisioning a GKE cluster, installing Agent Substrate from source, and deploying AX components on GCP GKE/GCS infrastructure.
 - [runbooks/deploy-in-pod.md](runbooks/deploy-in-pod.md) *(Sept 23, 2026)* — Executable guide for deploying AX locally inside a sandbox/pod for local testing, standalone mode, and in-process development.
 - [comparisons/e2b.md](comparisons/e2b.md) *(Sept 21, 2026)* — Deep-dive comparison of Agent Substrate's container-level gVisor sandboxing vs. E2B's Firecracker-based MicroVM approach.
 - [sessions/2026-09-21-agent-substrate-integration.md](sessions/2026-09-21-agent-substrate-integration.md) *(Sept 21, 2026)* — In-depth architectural session detailing AX's integration with Agent Substrate (Control Plane) and `ate-env` (Guest Environment).
