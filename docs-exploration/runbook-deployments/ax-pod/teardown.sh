@@ -28,7 +28,8 @@ else
 fi
 
 # 3. Clean up compiled binaries and build artifacts
-echo "=== Cleaning up build artifacts ==="
+echo "=== Cleaning up build artifacts and logs ==="
 make clean
+rm -f redis.log ax-server.log
 
 echo "=== Teardown complete! ==="

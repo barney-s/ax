@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # deploy.sh - Deploy AX In-Pod (Local Development & Test)
 # This script builds the AX binaries, starts local dependencies, and runs the server.
+# Change: Redirected redis-server and ax-server background outputs to log files to prevent hanging shell execution.
 set -euo pipefail
 
 # Locate script directory and source params.env
@@ -30,7 +31,7 @@ else
     if command -v pgrep >/dev/null && pgrep -f "redis-server.*${AX_REDIS_ADDR##*:}" >/dev/null; then
         echo "redis-server is already running."
     else
-        redis-server --port "${AX_REDIS_ADDR##*:}" &
+        redis-server --port "${AX_REDIS_ADDR##*:}" > redis.log 2>&1 &
         # Sleep briefly to allow redis-server to start up
         sleep 2
     fi
@@ -46,7 +47,7 @@ make test
 
 # 4. Step 3: Launch the AX API Server locally
 echo "=== Step 4: Launch AX API Server locally ==="
-./bin/ax-server --addr="${AX_SERVER_ADDR}" --redis-addr="${AX_REDIS_ADDR}" &
+./bin/ax-server --addr="${AX_SERVER_ADDR}" --redis-addr="${AX_REDIS_ADDR}" > ax-server.log 2>&1 &
 
 # Sleep briefly to ensure the server starts up and we can verify it
 sleep 2

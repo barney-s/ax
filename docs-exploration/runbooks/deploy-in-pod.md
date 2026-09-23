@@ -20,7 +20,7 @@ The following checklist represents the results of read-only probes executed unde
 * **Tools:**
   - `go` (v1.27+): ✓ present
   - `make`: ✓ present
-  - `redis-server` (or local Redis container): ✗ MISSING — Fix: `sudo apt-get update && sudo apt-get install -y redis-server` (or start Redis via `docker run -d -p 6379:6379 redis:7-alpine`)
+  - `redis-server` (or local Redis container): ✓ present (installed via `sudo apt-get update && sudo apt-get install -y redis-server`)
 
 * **Permissions & Environments:**
   - Local Sandbox write/execute permissions: ✓ present (You have write access to `/workspaces/ax` to build binaries and compile code).
@@ -30,9 +30,9 @@ The following checklist represents the results of read-only probes executed unde
 ## Preconditions
 
 1. **Start a local Redis instance** on port `6379`:
-   - If `redis-server` is installed locally:
+   - If `redis-server` is installed locally, run it in the background redirecting logs to avoid hanging the terminal session:
      ```bash
-     redis-server --port 6379 &
+     redis-server --port 6379 > redis.log 2>&1 &
      ```
    - If using `docker` or `podman` in your sandbox:
      ```bash
@@ -56,9 +56,9 @@ The following checklist represents the results of read-only probes executed unde
    ```
 
 3. **Launch the AX API Server locally**:
-   Start `ax-server` pointing to your local Redis instance. It will listen on port `8080`:
+   Start `ax-server` pointing to your local Redis instance. It will listen on port `8080`, redirecting outputs to avoid hanging:
    ```bash
-   ./bin/ax-server --addr=:8080 --redis-addr=localhost:6379 &
+   ./bin/ax-server --addr=:8080 --redis-addr=localhost:6379 > ax-server.log 2>&1 &
    ```
 
 ---
