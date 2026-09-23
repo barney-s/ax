@@ -29,6 +29,14 @@ gcloud services enable container.googleapis.com containerregistry.googleapis.com
 echo "Configuring docker/podman auth for gcr.io..."
 gcloud auth configure-docker gcr.io --quiet
 
+# 3. Create custom Cloud Build ignore file
+echo "Creating custom-gcloudignore..."
+cat <<EOF > "${WORKSPACE_DIR}/custom-gcloudignore"
+.git
+.github
+/tmp
+EOF
+
 
 echo "=== Step 1: Clone and configure Agent Substrate ==="
 rm -rf /tmp/substrate
@@ -60,6 +68,32 @@ echo "Configuring kubectl credentials for GKE cluster..."
 gcloud container clusters get-credentials "${CLUSTER_NAME}" --zone "${CLUSTER_LOCATION}" --project="${PROJECT_ID}"
 echo "Installing Agent Substrate control and data plane services..."
 ./hack/install-ate.sh --deploy-ate-system
+
+echo "Publishing worker images..."
+go run ./cmd/ate-setup publish worker-images
+
+echo "Creating default WorkerPool..."
+SUBSTRATE_VER=$(kubectl get nodes -o jsonpath='{.items[0].metadata.labels.ate\.dev/substrate-version}')
+kubectl apply -f - <<EOF
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: default-pool
+  namespace: default
+spec:
+  replicas: 2
+  workerImage: "gcr.io/${PROJECT_ID}/ate-images/ateom-gvisor:latest"
+  template:
+    nodeSelector:
+      ate.dev/substrate-version: "${SUBSTRATE_VER}"
+    resources:
+      limits:
+        cpu: "2"
+        memory: "2Gi"
+      requests:
+        cpu: "500m"
+        memory: "2Gi"
+EOF
 
 
 echo "=== Step 4: Build and push the AX Task Runner image ==="
