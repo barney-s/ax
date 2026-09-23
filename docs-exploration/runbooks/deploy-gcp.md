@@ -10,8 +10,8 @@ This deployment **cannot** run purely in-pod or as mock processes. It requires a
 
 ### Why real infrastructure is forced:
 - **Agent Substrate integration**: The `ax-controller` integrates with the `Agent Substrate` Control API (running inside the GKE cluster at `api.ate-system.svc.cluster.local`) to orchestrate sandboxed execution environments.
-- **Node-level / Pod-level reality**: Orchestrating task isolation, projected ServiceAccount tokens, and ClusterTrustBundles (`servicedns-ca`) requires a real Kubernetes control plane and node cluster.
-- **Image Registry requirement**: `ax-task-runner` must be hosted on a remote container registry (`GCR` or `Artifact Registry`) accessible by the GKE node kubelets.
+- **Node-level / Pod-level reality**: Orchestrating task isolation, projected ServiceAccount tokens, and ClusterTrustBundles (`servicedns-ca`) requires a real Kubernetes control plane and node cluster. If `ClusterTrustBundles` are unsupported on the GKE cluster, the controller must be run with `--substrate-insecure-tls` flag and without `--substrate-ca-file` to bypass CA verification.
+- **Image Registry requirement**: `ax-task-runner` must be hosted on a remote container registry (`GCR` or `Artifact Registry`) accessible by the GKE node kubelets. If local Docker/Podman environments are restricted (e.g. nested overlayfs operations are blocked), Google Cloud Build (`gcloud builds submit`) is the official fallback mechanism.
 
 ### Feasibility Checklist (Probed on Wednesday, September 23, 2026)
 
@@ -60,6 +60,16 @@ The following checklist represents the results of read-only probes executed unde
    The AX controller deploys sandboxes using the task runner image. Compile the task-runner binary and build/push its container:
    ```bash
    make push-task-runner
+   ```
+   *Fallback (Google Cloud Build):* If local `docker`/`podman` is unavailable or restricted, cross-compile the binary locally and build/push via Google Cloud Build:
+   ```bash
+   mkdir -p bin/linux_amd64
+   GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/linux_amd64/ax-task-runner ./cmd/ax-task-runner
+   mv .dockerignore .dockerignore.bak || true
+   cp Dockerfile.task-runner Dockerfile
+   gcloud builds submit --tag="${TASK_RUNNER_REPO}:latest" --ignore-file=custom-gcloudignore --project="${PROJECT_ID}" .
+   rm Dockerfile
+   mv .dockerignore.bak .dockerignore || true
    ```
 
 2. **Deploy Redis to the GKE Cluster**:

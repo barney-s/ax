@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # deploy.sh - Deploy AX to GCP (GKE & GCR)
+# Changed: Built task-runner using Google Cloud Build instead of local Container CLI due to nested namespace limits.
 # This script deploys AX components (Redis, ax-controller, and ax-server) to the GKE cluster.
 set -euo pipefail
 
@@ -33,7 +34,16 @@ echo "=== Deployment: Building and Applying AX Components ==="
 
 # Step 1: Build and push the Task Runner container image
 echo "Step 1: Building and pushing the Task Runner container image..."
-make push-task-runner
+echo "Cross-compiling ax-task-runner for linux/amd64..."
+mkdir -p bin/linux_amd64
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/linux_amd64/ax-task-runner ./cmd/ax-task-runner
+
+echo "Building and pushing container image ${TASK_RUNNER_REPO}:latest via Google Cloud Build..."
+mv .dockerignore .dockerignore.bak || true
+cp Dockerfile.task-runner Dockerfile
+gcloud builds submit --tag="${TASK_RUNNER_REPO}:latest" --ignore-file=custom-gcloudignore --project="${PROJECT}" .
+rm Dockerfile
+mv .dockerignore.bak .dockerignore || true
 
 # Step 2: Deploy Redis to the GKE Cluster
 echo "Step 2: Deploying Redis to the GKE Cluster (ax-system namespace)..."
