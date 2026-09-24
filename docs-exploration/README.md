@@ -6,6 +6,7 @@ These documents are kept up-to-date and reflect the actual system architecture a
 
 ## Index (Freshest First)
 
+- [runbook-deployments/instance4/receipt-20260924-0653.md](runbook-deployments/instance4/receipt-20260924-0653.md) *(Sept 24, 2026)* — Execution receipt for `instance4` on GCP GKE, validating full infrastructure provisioning, Substrate Helm v0.0.12 integration, Cloud Build compilation for `ax-task-runner`, dynamic protobuf `protowire` field injection, and AX platform components.
 - [runbook-deployments/instance3/receipt-20260924-0528.md](runbook-deployments/instance3/receipt-20260924-0528.md) *(Sept 24, 2026)* — Execution receipt for `instance3` on GCP GKE, validating full infrastructure provisioning, Agent Substrate Helm v0.0.12 installation with custom RBAC, Cloud Build container pipelines, and AX platform components.
 - [runbook-deployments/instance3/receipt-20260924-0448.md](runbook-deployments/instance3/receipt-20260924-0448.md) *(Sept 24, 2026)* — Plan receipt for the `instance3` deployment instance on GCP GKE, provisioning isolated GKE cluster, GCS snapshots bucket, and AX platform components.
 - [runbook-deployments/instance2/receipt-20260924-0326.md](runbook-deployments/instance2/receipt-20260924-0326.md) *(Sept 24, 2026)* — Plan receipt for the `instance2` deployment instance on GCP GKE, provisioning isolated GKE cluster, GCS snapshots bucket, and AX platform components.
