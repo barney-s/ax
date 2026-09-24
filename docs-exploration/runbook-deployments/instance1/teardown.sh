@@ -39,11 +39,18 @@ gcloud container clusters delete "${GKE_CLUSTER}" --zone "${GCP_REGION}-a" --qui
 
 # 2. Delete the GCS Snapshots Bucket
 echo "==> Deleting GCS snapshots bucket gs://${GCS_BUCKET}..."
-gcloud storage buckets delete "gs://${GCS_BUCKET}" --recursive --quiet || echo "GCS Bucket gs://${GCS_BUCKET} deletion failed or already deleted."
+gcloud storage rm --recursive "gs://${GCS_BUCKET}" || echo "GCS Bucket gs://${GCS_BUCKET} deletion failed or already deleted."
 
 # 3. Delete Published Images
-echo "==> Deleting published task-runner container images from ${TASK_RUNNER_REPO}..."
-gcloud container images delete "${TASK_RUNNER_REPO}:latest" --force-delete-tags --quiet || echo "No images to delete or deletion failed."
+echo "==> Deleting all published container images from ${AX_IMAGE_REPO}..."
+if gcloud container images list --repository="${AX_IMAGE_REPO}" >/dev/null 2>&1; then
+  for repo in $(gcloud container images list --repository="${AX_IMAGE_REPO}" --format="value(name)"); do
+    echo "Deleting image repository: ${repo}"
+    gcloud container images delete "${repo}" --force-delete-tags --quiet || echo "Failed to delete repository ${repo} or already deleted."
+  done
+else
+  echo "No images found or repository ${AX_IMAGE_REPO} does not exist."
+fi
 
 # 4. Delete GCP Service Account
 echo "==> Deleting GCP Service Account ${GSA_EMAIL}..."
