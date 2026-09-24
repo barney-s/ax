@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# MODIFIED: Installed Substrate via Helm chart v0.0.12 to align with GKE standard capabilities, added RBAC for storageclasses, Cloud Build for task-runner, and CA replication.
+# MODIFIED: Installed Substrate via Helm v0.0.12 for GKE standard, RBAC for storageclasses, Cloud Build for task-runner, CA replication, and recreation of immutable ActorTemplates.
 
 # Copyright 2026 Google LLC
 #
@@ -265,6 +265,8 @@ TASK_RUNNER_DIGEST=$(gcloud container images list-tags "${TASK_RUNNER_REPO}" --f
 PINNED_TASK_RUNNER_IMAGE="${TASK_RUNNER_REPO}@${TASK_RUNNER_DIGEST}"
 
 echo "==> Creating default ActorTemplates in ax-system and default namespaces..."
+kubectl delete actortemplate default-template -n ax-system --ignore-not-found=true
+kubectl delete actortemplate default-template -n default --ignore-not-found=true
 kubectl apply -f - <<EOF
 apiVersion: ate.dev/v1alpha1
 kind: ActorTemplate
