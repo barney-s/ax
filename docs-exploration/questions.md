@@ -38,3 +38,7 @@ These notes identify open questions, architectural limits, and details not fully
 ## 8. Skipped Runbook Scenario: Upgrade in-pod (September 23, 2026)
 - **Decision:** The `upgrade-in-pod` scenario has been skipped.
 - **Rationale:** Under local or single-process execution (in-pod development), there are no complex orchestrations or rolling state transitions. Re-deploying or upgrading AX locally is functionally identical to recompiling the binaries via `make build` and restarting the local `ax-server` and `ax-controller` processes. Therefore, drafting a dedicated `upgrade-in-pod.md` runbook does not demonstrate anything unique, and the process is fully covered under the `deploy-in-pod.md` steps.
+
+## 9. Late-Binding Snapshot Bucket Validation
+- **Observation:** `reconciler.go` and `BuildActorTemplate` pass the dynamic or default snapshot GCS bucket name (`AX_SNAPSHOTS_BUCKET` / `DefaultSnapshotsBucket`) directly to Agent Substrate.
+- **Ambiguity:** There is currently no pre-validation or probe at task creation time to confirm that the specified bucket exists or that the Substrate worker nodes/service accounts have the proper GCS permissions to write to it. If the bucket is misconfigured or permissions are missing, the task starts successfully, but subsequent suspension or checkpoint operations will fail silently or crash. Is there a plan to add bucket accessibility probes to the `ax-controller` reconciliation loop?
