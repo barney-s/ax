@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+# MODIFIED: Transitioned Substrate Helm chart and CRDs to version 0.0.12 to align with compiled client proto API contracts and resolve template compatibility issues.
 # MODIFIED: Configured explicit zone us-central1-a for GKE and transitioned task-runner compilation to Google Cloud Build to bypass local Docker/Podman daemon requirements.
 
 # Copyright 2026 Google LLC
@@ -174,14 +175,14 @@ kubectl annotate serviceaccount default -n default --overwrite \
 echo "==> Installing Agent Substrate CRDs..."
 helm upgrade --install substrate-crds \
   oci://ghcr.io/kagent-dev/substrate/helm/substrate-crds \
-  --version 0.0.9 \
+  --version 0.0.12 \
   --namespace ate-system --create-namespace --wait
 
 # 3e. Install Agent Substrate Platform
 echo "==> Installing Agent Substrate Platform..."
 helm upgrade --install substrate \
   oci://ghcr.io/kagent-dev/substrate/helm/substrate \
-  --version 0.0.9 \
+  --version 0.0.12 \
   --namespace ate-system \
   --set controller.serviceAccount.annotations."iam\.gke\.io/gcp-service-account"="${GSA_EMAIL}" \
   --set atelet.serviceAccount.annotations."iam\.gke\.io/gcp-service-account"="${GSA_EMAIL}" \

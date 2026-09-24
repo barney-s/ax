@@ -48,7 +48,13 @@ The executing identity (`cnrm-barni-1.svc.id.goog`) requires the following IAM r
 2. A unique instance identifier prefix is exported as `${RESOURCE_PREFIX}` (e.g. `ax-prod-1`). All created cloud resources will be prefixed with this value.
 3. The GCP target region is exported as `${GCP_REGION}` (default: `us-central1`).
 4. Docker/Podman is running locally, and `ko` is installed.
-5. The `gcloud` CLI is logged in and configured to the target project:
+5. **GKE Standard Volume, RBAC, & Template Constraints**:
+   - GKE standard clusters do not support the Kubernetes `ClusterTrustBundle` API. The projected volume `servicedns-ca` in `ax-controller.yaml` must be mounted from a local replicated `ateapi-ca` ConfigMap.
+   - Substrate `ate-api-server` and `atelet` worker pods require cluster-scoped list/watch permissions for `storageclasses` (and `csidriverconfigs`) to synchronize their internal startup reflectors. Because GKE admission webhooks can revert direct edits on the original `ate-api-server-role` ClusterRole, a separate custom ClusterRole and Binding (e.g., `ate-api-server-extra-role` and `ate-api-server-extra-binding`) must be created to grant these.
+   - Substrate `0.0.12` uses Valkey/Redis but requires an empty `ate-api-authentication` ConfigMap to exist in the `ate-system` namespace to satisfy its volume mount.
+   - Active worker nodes must have corresponding `WorkerPool` custom resources (e.g. `default-workerpool`) declared in the cluster namespaces for workers to successfully register as active/available.
+   - In GKE standard virtualization environments, executing sandboxed actors will fail at the container socket initialization stage due to host mounting restrictions, meaning end-to-end task boots are DEPLOYED-UNVERIFIED.
+6. The `gcloud` CLI is logged in and configured to the target project:
    ```bash
    gcloud config set project ${GCP_PROJECT}
    gcloud config set compute/region ${GCP_REGION}
