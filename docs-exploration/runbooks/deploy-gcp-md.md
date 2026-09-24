@@ -63,113 +63,91 @@ The executing identity (`cnrm-barni-1.svc.id.goog`) requires the following IAM r
 
 ## Steps
 
-### 1. Provision GKE Cluster and credentials
-Create the GKE cluster with gVisor-enabled node pools and retrieve its access context:
-```bash
-# Provision a standard GKE cluster
-gcloud container clusters create "${RESOURCE_PREFIX}-gke" \
-  --num-nodes=3 \
-  --machine-type="e2-standard-4" \
-  --addons=GcePersistentDiskCsiDriver \
-  --workload-pool="${GCP_PROJECT}.svc.id.goog"
-
-# Fetch kubeconfig credentials
-gcloud container clusters get-credentials "${RESOURCE_PREFIX}-gke"
-```
-
-### 2. Create the GCS checkpoint bucket
-Create the bucket where AX will store compressed workspace state snapshots during task suspension:
-```bash
-gcloud storage buckets create "gs://${RESOURCE_PREFIX}-snapshots" \
-  --project="${GCP_PROJECT}" \
-  --location="${GCP_REGION}"
-```
-
-### 3. Install Agent Substrate (Control Plane)
-Deploy the Agent Substrate platform operator, daemonsets, and its routing service onto the GKE cluster. We configure GKE Workload Identity to authorize Agent Substrate and AX to read and write to the GCS snapshots bucket, and then compile and deploy Substrate from source.
-
-#### 3a. Provision GCP Service Account & GCS IAM Roles
-Create a dedicated Google Cloud Service Account (GSA) and grant it administrative access to the GCS snapshots bucket:
-```bash
-# Create the Google Service Account
-gcloud iam service-accounts create "${RESOURCE_PREFIX}-sa" \
-  --project="${GCP_PROJECT}" \
-  --display-name="AX and Substrate GCS Service Account"
-
-# Grant the storage.objectAdmin role on the GCS snapshots bucket to the GSA
-gcloud storage buckets add-iam-policy-binding "gs://${RESOURCE_PREFIX}-snapshots" \
-  --member="serviceAccount:${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
-  --role="roles/storage.objectAdmin"
-```
-
-#### 3b. Bind Kubernetes Service Accounts (KSA) using Workload Identity
-Allow the Kubernetes Service Accounts (KSAs) used by Agent Substrate and AX to impersonate the GSA:
-```bash
-# Bind Substrate's controller KSA (in ate-system namespace)
-gcloud iam service-accounts add-iam-policy-binding "${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
-  --role="roles/iam.workloadIdentityUser" \
-  --member="serviceAccount:${GCP_PROJECT}.svc.id.goog[ate-system/substrate-controller]" \
-  --project="${GCP_PROJECT}"
-
-# Bind Substrate's atelet daemon KSA (in ate-system namespace)
-gcloud iam service-accounts add-iam-policy-binding "${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
-  --role="roles/iam.workloadIdentityUser" \
-  --member="serviceAccount:${GCP_PROJECT}.svc.id.goog[ate-system/atelet]" \
-  --project="${GCP_PROJECT}"
-
-# Bind AX's controller KSA (in ax-system namespace)
-gcloud iam service-accounts add-iam-policy-binding "${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
-  --role="roles/iam.workloadIdentityUser" \
-  --member="serviceAccount:${GCP_PROJECT}.svc.id.goog[ax-system/ax-controller]" \
-  --project="${GCP_PROJECT}"
-```
-
-#### 3c. Pre-Create Namespaces and Annotate AX Controller
-Create the required namespaces and pre-annotate the AX controller service account so that it automatically inherits the GSA's permissions when deployed:
-```bash
-# Create namespaces
-kubectl create namespace ate-system || true
-kubectl create namespace ax-system || true
-
-# Pre-create and annotate the AX controller service account
-kubectl create serviceaccount ax-controller -n ax-system || true
-kubectl annotate serviceaccount ax-controller -n ax-system --overwrite \
-  "iam.gke.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
-```
-
-#### 3d. Clone Agent Substrate Repository
-Clone the Agent Substrate source code from its repository. This repository contains the installer scripts, manifests, and build logic to compile Agent Substrate from source:
+### 1. Clone Agent Substrate Repository and Configure Environment
+Clone the Agent Substrate source code from its repository and prepare your environment configuration. This repository contains the automated `setup-gcp` tool, deployment helper scripts, and source manifests used to build and install Agent Substrate from source:
 ```bash
 # Clone the repository
 git clone https://github.com/agent-substrate/substrate.git
 cd substrate
-```
 
-#### 3e. Build and Deploy Agent Substrate from Source
-Configure the deployment environment variables, targeting your active GKE cluster, GCP project, and snapshots bucket, then run the installer script. This will use Go compilation and `ko` to build OCI images from source, publish them to your container registry, and deploy the CRDs and components onto the cluster:
-```bash
-# Export standard environment variables for building and installing from source
+# Create the params.env configuration file to guide the setup tool
+cat <<EOF > params.env
 export PROJECT_ID="${GCP_PROJECT}"
-export BUCKET_NAME="${RESOURCE_PREFIX}-snapshots"
-export CLUSTER_NAME="${RESOURCE_PREFIX}-gke"
-export CLUSTER_LOCATION="${GCP_REGION}-a"
-export KO_DOCKER_REPO="gcr.io/${GCP_PROJECT}/${RESOURCE_PREFIX}-images/substrate"
-export KO_DEFAULTPLATFORMS="linux/amd64"
+export GCE_REGION="${GCP_REGION}"
+export CLUSTER_LOCATION="${CLUSTER_LOCATION:-us-central1-a}"
+export RESOURCE_PREFIX="${RESOURCE_PREFIX}"
+EOF
 
-# Run the installation script to compile and deploy the core system (CRDs, APIs, atelet, gateway)
-./hack/install-ate.sh --deploy-ate-system
+# Load the parameters and export derived environment variables
+source params.env
+export NO_DEV_ENV=1 GOCACHE=/tmp/gocache GOTMPDIR=/tmp/gotmp
+export PATH="$(go env GOPATH)/bin:${PATH}"
+mkdir -p "$GOCACHE" "$GOTMPDIR"
+
+# Generate derived names matching Substrate setup patterns
+export PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format="value(projectNumber)")
+export CLUSTER_NAME="${RESOURCE_PREFIX}"
+export BUCKET_NAME="${RESOURCE_PREFIX}-snap-${PROJECT_NUMBER}"
+export KO_DOCKER_REPO="gcr.io/${PROJECT_ID}/${RESOURCE_PREFIX}"
+export KO_DEFAULTPLATFORMS=linux/amd64
+export NETWORK=default SUBNETWORK=default NODE_MACHINE_TYPE=e2-standard-4
+export CLUSTER_VERSION=$(gcloud container get-server-config --location "${CLUSTER_LOCATION}" \
+ --format=json | jq -r '.validMasterVersions[]' | grep -m1 '^1\.36\.')
+export KUBECTL_CONTEXT="gke_${PROJECT_ID}_${CLUSTER_LOCATION}_${CLUSTER_NAME}"
 ```
 
-#### 3f. Annotate Service Accounts for Workload Identity
-Since the deployment from source creates the Kubernetes Service Accounts (KSAs) in the `ate-system` namespace, manually apply the GKE Workload Identity annotations to authorize them to access the GCS snapshots bucket via your Google Service Account (GSA):
+### 2. Provision Infrastructure using Setup Tool
+Instead of running verbose, error-prone manual GCP CLI commands, execute Substrate's automated Go-based provisioning tool. This enables necessary APIs, creates the GKE cluster (with the standard node pool configurations), provisions the global GCS snapshots bucket, and configures project/instance-level IAM bindings:
 ```bash
-# Annotate the Substrate controller service account
-kubectl annotate serviceaccount substrate-controller -n ate-system --overwrite \
-  "iam.gke.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
+# Enable APIs, create the cluster, bucket, and IAM roles/bindings
+go run ./tools/setup-gcp enable apis
+go run ./tools/setup-gcp create cluster # about 10 mins
+go run ./tools/setup-gcp create bucket
+go run ./tools/setup-gcp create iam
 
-# Annotate the atelet daemon service account
+# Ensure GKE node-pool workers are never drained or auto-upgraded during runtime
+gcloud container node-pools update substrate-node-pool \
+ --cluster "${CLUSTER_NAME}" --location "${CLUSTER_LOCATION}" --no-enable-autoupgrade
+
+# Fetch and activate the kubeconfig credentials for your cluster
+gcloud container clusters get-credentials "${CLUSTER_NAME}" \
+ --location "${CLUSTER_LOCATION}" --project "${PROJECT_ID}"
+```
+
+### 3. Deploy Agent Substrate from Source (Control Plane)
+Pre-create the required namespaces, configure Workload Identity for AX component access to the snapshot bucket, and compile/deploy the Substrate control plane directly from your source checkout:
+
+#### 3a. Pre-Create Namespaces and Configure AX Workload Identity
+Create the logical namespaces and authorize AX's Kubernetes service accounts to impersonate the created GCP Service Account (GSA) so they can read/write checkpoints:
+```bash
+# Create standard namespaces
+kubectl create namespace ate-system || true
+kubectl create namespace ax-system || true
+
+# Pre-create and annotate the AX controller service account for GKE Workload Identity
+kubectl create serviceaccount ax-controller -n ax-system || true
+kubectl annotate serviceaccount ax-controller -n ax-system --overwrite \
+  "iam.gke.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# Bind AX controller KSA to the Google Service Account via IAM Workload Identity
+gcloud iam service-accounts add-iam-policy-binding "${RESOURCE_PREFIX}-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:${PROJECT_ID}.svc.id.goog[ax-system/ax-controller]" \
+  --project="${PROJECT_ID}"
+```
+
+#### 3b. Compile and Roll Out Substrate Control Plane
+Use `ko` and the repository's installer script to compile the Substrate binaries, build container images, publish them to your Artifact Registry/GCR, and deploy the entire control plane onto the GKE cluster:
+```bash
+# Install and roll out the core control plane workloads (CRDs, APIs, atelet, and routing gateways)
+hack/install-ate.sh --deploy-ate-system --rollout-timeout=300s
+
+# Manually annotate the newly created Substrate KSAs to complete the Workload Identity loop
+kubectl annotate serviceaccount substrate-controller -n ate-system --overwrite \
+  "iam.gke.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+
 kubectl annotate serviceaccount atelet -n ate-system --overwrite \
-  "iam.gke.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
+  "iam.gke.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 
 # Return to the AX repository root
 cd ..
@@ -178,7 +156,7 @@ cd ..
 ### 4. Build and Push the Task-Runner Image
 The `ax-task-runner` serves as the guest supervisor inside tasks. Package and push it to Google Container Registry (GCR) or Artifact Registry (GAR):
 ```bash
-# Define your image repository path
+# Define your image repository path and parameters
 export AX_IMAGE_REPO="gcr.io/${GCP_PROJECT}/${RESOURCE_PREFIX}-images"
 export TASK_RUNNER_REPO="${AX_IMAGE_REPO}/ax-task-runner"
 
@@ -203,8 +181,12 @@ make deploy-server
 ### 6. Configure Controller Snapshots Bucket
 Update the newly deployed `ax-controller` to use your custom GCS bucket for volume checkpoints:
 ```bash
+# Configure the controller with the exact GCS bucket name generated by the setup tool
+export PROJECT_NUMBER=$(gcloud projects describe "${GCP_PROJECT}" --format="value(projectNumber)")
+export BUCKET_NAME="${RESOURCE_PREFIX}-snap-${PROJECT_NUMBER}"
+
 kubectl set env deployment/ax-controller -n ax-system \
-  AX_SNAPSHOTS_BUCKET="gs://${RESOURCE_PREFIX}-snapshots/"
+  AX_SNAPSHOTS_BUCKET="gs://${BUCKET_NAME}/"
 ```
 
 ---
@@ -213,9 +195,10 @@ kubectl set env deployment/ax-controller -n ax-system \
 
 Verify that the GKE deployment has succeeded and the control plane is healthy:
 
-1. **Verify Pod Status:** All AX system pods must be in the `Running` state:
+1. **Verify Pod Status:** All AX and Substrate system pods must be in the `Running` state:
    ```bash
    kubectl get pods -n ax-system
+   kubectl get pods -n ate-system
    ```
 2. **Verify API Server Connectivity:** Port-forward the AX API server and query tasks via the CLI:
    ```bash
@@ -242,19 +225,36 @@ Verify that the GKE deployment has succeeded and the control plane is healthy:
 
 To avoid incurring continuous cloud costs, tear down the GCP resources once verification is complete:
 
-1. **Delete the GKE Cluster:**
+1. **Delete AX Components and Substrate Control Plane:**
    ```bash
-   gcloud container clusters delete "${RESOURCE_PREFIX}-gke" --quiet
+   # Return to the substrate directory
+   cd substrate
+
+   # Ensure the parameters and environment are loaded
+   source params.env
+   export PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format="value(projectNumber)")
+   export CLUSTER_NAME="${RESOURCE_PREFIX}"
+   export BUCKET_NAME="${RESOURCE_PREFIX}-snap-${PROJECT_NUMBER}"
+   export KO_DOCKER_REPO="gcr.io/${PROJECT_ID}/${RESOURCE_PREFIX}"
+
+   # Delete all Substrate control plane workloads and CRDs from the cluster
+   hack/install-ate.sh --delete-all
    ```
-2. **Delete the GCS Snapshots Bucket:**
+2. **Delete GCP Infrastructure and IAM Bindings:**
+   Use Substrate's automated teardown utility to destroy the cluster, snapshot bucket, and IAM/Workload Identity bindings:
    ```bash
-   gcloud storage buckets delete "gs://${RESOURCE_PREFIX}-snapshots" --recursive --quiet
+   # Tear down the GCP cluster, bucket, and bindings
+   hack/teardown.sh --delete-iam-policy-bindings --delete-snapshot-bucket --delete-cluster
    ```
-3. **Delete Published Images:** Remove the Artifact Registry / GCR images deployed for this instance:
+3. **Delete Published Images:** Remove the published images from GCR/Artifact Registry to clean up the workspace:
    ```bash
-   gcloud container images delete "${TASK_RUNNER_REPO}:latest" --force-delete-tags --quiet
-   ```
-4. **Delete GCP Service Account:**
-   ```bash
-   gcloud iam service-accounts delete "${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" --quiet
+   # Delete Substrate images
+   for img in $(gcloud artifacts docker images list "${KO_DOCKER_REPO}" --format='value(package)' | sort -u); do
+     gcloud artifacts docker images delete "${img}" --delete-tags --quiet
+   done
+
+   # Return to AX root and delete AX images
+   cd ..
+   export AX_IMAGE_REPO="gcr.io/${GCP_PROJECT}/${RESOURCE_PREFIX}-images"
+   gcloud container images delete "${AX_IMAGE_REPO}/ax-task-runner:latest" --force-delete-tags --quiet
    ```
