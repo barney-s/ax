@@ -86,7 +86,7 @@ gcloud storage buckets create "gs://${RESOURCE_PREFIX}-snapshots" \
 ```
 
 ### 3. Install Agent Substrate (Control Plane)
-Deploy the Agent Substrate platform operator, daemonsets, and its routing service onto the GKE cluster. We configure GKE Workload Identity to authorize Agent Substrate and AX to read and write to the GCS snapshots bucket, and then deploy Substrate via Helm.
+Deploy the Agent Substrate platform operator, daemonsets, and its routing service onto the GKE cluster. We configure GKE Workload Identity to authorize Agent Substrate and AX to read and write to the GCS snapshots bucket, and then compile and deploy Substrate from source.
 
 #### 3a. Provision GCP Service Account & GCS IAM Roles
 Create a dedicated Google Cloud Service Account (GSA) and grant it administrative access to the GCS snapshots bucket:
@@ -137,26 +137,42 @@ kubectl annotate serviceaccount ax-controller -n ax-system --overwrite \
   "iam.gke.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
 ```
 
-#### 3d. Install Agent Substrate CRDs
-Install the Agent Substrate Custom Resource Definitions (CRDs) via Helm OCI charts:
+#### 3d. Clone Agent Substrate Repository
+Clone the Agent Substrate source code from its repository. This repository contains the installer scripts, manifests, and build logic to compile Agent Substrate from source:
 ```bash
-helm upgrade --install substrate-crds \
-  oci://ghcr.io/kagent-dev/substrate/helm/substrate-crds \
-  --version 0.0.9 \
-  --namespace ate-system --create-namespace --wait
+# Clone the repository
+git clone https://github.com/agent-substrate/substrate.git
+cd substrate
 ```
 
-#### 3e. Install Agent Substrate Platform
-Install the core Substrate operator, gateway, and daemonset, configuring them with GCS snapshots and GKE Workload Identity:
+#### 3e. Build and Deploy Agent Substrate from Source
+Configure the deployment environment variables, targeting your active GKE cluster, GCP project, and snapshots bucket, then run the installer script. This will use Go compilation and `ko` to build OCI images from source, publish them to your container registry, and deploy the CRDs and components onto the cluster:
 ```bash
-helm upgrade --install substrate \
-  oci://ghcr.io/kagent-dev/substrate/helm/substrate \
-  --version 0.0.9 \
-  --namespace ate-system \
-  --set controller.serviceAccount.annotations."iam\.gke\.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
-  --set atelet.serviceAccount.annotations."iam\.gke\.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
-  --set snapshotsConfig.location="gs://${RESOURCE_PREFIX}-snapshots/" \
-  --wait
+# Export standard environment variables for building and installing from source
+export PROJECT_ID="${GCP_PROJECT}"
+export BUCKET_NAME="${RESOURCE_PREFIX}-snapshots"
+export CLUSTER_NAME="${RESOURCE_PREFIX}-gke"
+export CLUSTER_LOCATION="${GCP_REGION}-a"
+export KO_DOCKER_REPO="gcr.io/${GCP_PROJECT}/${RESOURCE_PREFIX}-images/substrate"
+export KO_DEFAULTPLATFORMS="linux/amd64"
+
+# Run the installation script to compile and deploy the core system (CRDs, APIs, atelet, gateway)
+./hack/install-ate.sh --deploy-ate-system
+```
+
+#### 3f. Annotate Service Accounts for Workload Identity
+Since the deployment from source creates the Kubernetes Service Accounts (KSAs) in the `ate-system` namespace, manually apply the GKE Workload Identity annotations to authorize them to access the GCS snapshots bucket via your Google Service Account (GSA):
+```bash
+# Annotate the Substrate controller service account
+kubectl annotate serviceaccount substrate-controller -n ate-system --overwrite \
+  "iam.gke.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
+
+# Annotate the atelet daemon service account
+kubectl annotate serviceaccount atelet -n ate-system --overwrite \
+  "iam.gke.io/gcp-service-account"="${RESOURCE_PREFIX}-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
+
+# Return to the AX repository root
+cd ..
 ```
 
 ### 4. Build and Push the Task-Runner Image
