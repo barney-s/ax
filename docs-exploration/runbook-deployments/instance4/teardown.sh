@@ -12,7 +12,7 @@ echo "==> Teardown: 1. Deleting GKE Cluster (${CLUSTER_NAME})..."
 gcloud container clusters delete "${CLUSTER_NAME}" --zone="${CLUSTER_LOCATION}" --quiet || true
 
 echo "==> Teardown: 2. Deleting GCS Snapshots Bucket (gs://${BUCKET_NAME})..."
-gcloud storage buckets delete "gs://${BUCKET_NAME}" --recursive --quiet || true
+gcloud storage rm --recursive "gs://${BUCKET_NAME}" --quiet || true
 
 echo "==> Teardown: 3. Deleting Published Container Images (${TASK_RUNNER_REPO})..."
 gcloud container images delete "${TASK_RUNNER_REPO}:latest" --force-delete-tags --quiet || true
