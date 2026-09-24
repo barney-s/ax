@@ -9,7 +9,7 @@ cd "${REPO_ROOT}"
 source "${SCRIPT_DIR}/params.env"
 
 echo "==> Teardown: 1. Deleting GKE Cluster (${CLUSTER_NAME})..."
-gcloud container clusters delete "${CLUSTER_NAME}" --region="${GCP_REGION}" --quiet || true
+gcloud container clusters delete "${CLUSTER_NAME}" --zone="${CLUSTER_LOCATION}" --quiet || true
 
 echo "==> Teardown: 2. Deleting GCS Snapshots Bucket (gs://${BUCKET_NAME})..."
 gcloud storage buckets delete "gs://${BUCKET_NAME}" --recursive --quiet || true
