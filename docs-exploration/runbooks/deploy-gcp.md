@@ -19,10 +19,9 @@ This scenario **needs real cloud infrastructure and real nodes**. It cannot run 
 - [x] **gcloud CLI**: ✓ Present (`gcloud version` shows active installation, active project: `barni-cnrm-20260529`)
 - [x] **kubectl CLI**: ✓ Present (Installed and ready)
 - [x] **Go 1.27+ Compiler**: ✓ Present (`go version` shows `go1.27.1`)
-- [ ] **Helm CLI**: ✗ MISSING (Install on Linux/macOS via `curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash` or `brew install helm`)
-- [ ] **ko CLI**: ✗ MISSING (Install on the operator's machine via `go install github.com/google/ko@latest`)
-- [ ] **Docker / Podman Daemon**: ✗ MISSING (Install Docker and start the daemon to build the linux/amd64 task-runner container image)
-- [ ] **Agent Substrate Control Plane**: ✗ MISSING (To be installed during runbook execution using Helm)
+- [ ] **ko CLI**: ✗ MISSING (Install on the operator's machine via `go install github.com/google/ko@latest`. Crucial for compiling and deploying Agent Substrate and AX from source)
+- [ ] **Docker / Podman Daemon**: ✗ MISSING (Install Docker and start the daemon to build the linux/amd64 container images)
+- [ ] **Agent Substrate Source Code**: ✗ MISSING (Clone `https://github.com/agent-substrate/substrate` to build and deploy from source)
 
 ### IAM Permissions Required
 The executing identity (`cnrm-barni-1.svc.id.goog`) requires the following IAM roles or permissions on the target GCP project:
