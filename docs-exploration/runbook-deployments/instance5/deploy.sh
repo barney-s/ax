@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Fix: Ensure all env vars are exported and configure .gcloudignore and .dockerignore during Cloud Build so bin/ is included.
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +28,11 @@ export NO_DEV_ENV=1 GOCACHE=/tmp/gocache GOTMPDIR=/tmp/gotmp
 export PATH="$(go env GOPATH)/bin:${PATH}"
 mkdir -p "$GOCACHE" "$GOTMPDIR"
 
+export PROJECT_ID
 export PROJECT_NUMBER
+export GCE_REGION
+export CLUSTER_LOCATION
+export RESOURCE_PREFIX
 export CLUSTER_NAME="${RESOURCE_PREFIX}"
 export BUCKET_NAME="${RESOURCE_PREFIX}-snap-${PROJECT_NUMBER}"
 export KO_DOCKER_REPO="gcr.io/${PROJECT_ID}/${RESOURCE_PREFIX}"
@@ -97,6 +102,10 @@ gcloud container clusters get-credentials "${CLUSTER_NAME}" \
 echo "==> Installing Substrate control plane..."
 hack/install-ate.sh --deploy-ate-system --rollout-timeout=300s
 
+# 5b. Deploy WorkerPool for executing actor sandboxes
+echo "==> Deploying Substrate WorkerPool..."
+go run ./cmd/ate-setup deploy demo sandbox || true
+
 # ===========================================================================
 # Part II: Build and Deploy AX Platform
 # ===========================================================================
@@ -113,9 +122,31 @@ make install
 echo "==> Compiling ax-task-runner and submitting Cloud Build..."
 mkdir -p bin/linux_amd64
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/linux_amd64/ax-task-runner ./cmd/ax-task-runner
+[ -f .dockerignore ] && mv .dockerignore .dockerignore.bak
+cat << 'EOF' > .dockerignore
+.git
+.idea
+.vscode
+.claude
+*.log
+tmp/
+!bin/linux_amd64/ax-task-runner
+!cmd/ax-task-runner/antigravity_bootstrap.py
+EOF
+cat << 'EOF' > .gcloudignore
+.git
+.idea
+.vscode
+.claude
+*.log
+tmp/
+!bin/linux_amd64/ax-task-runner
+!cmd/ax-task-runner/antigravity_bootstrap.py
+EOF
 cp Dockerfile.task-runner Dockerfile
 gcloud builds submit --tag "${TASK_RUNNER_REPO}:latest" .
-rm -f Dockerfile
+rm -f Dockerfile .gcloudignore .dockerignore
+[ -f .dockerignore.bak ] && mv .dockerignore.bak .dockerignore
 
 # 9. Deploy AX platform components (Redis, ax-controller, ax-server) using ko
 echo "==> Deploying AX platform components (Redis, ax-controller, ax-server)..."
