@@ -23,12 +23,18 @@ cd "${REPO_ROOT}"
 source "${SCRIPT_DIR}/params.env"
 
 export NO_DEV_ENV=1
+export PROJECT_ID
 export PROJECT_NUMBER
-export CLUSTER_NAME="${RESOURCE_PREFIX}"
-export CLUSTER_LOCATION
 export GCE_REGION
+export CLUSTER_LOCATION
+export RESOURCE_PREFIX
+export CLUSTER_NAME="${RESOURCE_PREFIX}"
 export BUCKET_NAME="${RESOURCE_PREFIX}-snap-${PROJECT_NUMBER}"
+export GSA_NAME
+export GSA_EMAIL
 export KO_DOCKER_REPO="gcr.io/${PROJECT_ID}/${RESOURCE_PREFIX}"
+export AX_IMAGE_REPO="gcr.io/${PROJECT_ID}/${RESOURCE_PREFIX}"
+export TASK_RUNNER_REPO="gcr.io/${PROJECT_ID}/${RESOURCE_PREFIX}/ax-task-runner"
 
 echo "============================================================"
 echo "TEARING DOWN AX INSTANCE: ${RESOURCE_PREFIX}"
@@ -53,7 +59,7 @@ if [ -d "${SUBSTRATE_DIR}" ]; then
   hack/install-ate.sh --delete-all || true
 
   echo "==> 3. Revoking IAM policy bindings, deleting GCS bucket, and deleting GKE cluster..."
-  hack/teardown.sh --delete-iam-policy-bindings --delete-snapshot-bucket --delete-cluster || true
+  hack/teardown.sh --all || true
 else
   echo "==> Substrate directory not found. Cleaning up GCP resources directly via gcloud..."
   gcloud container clusters delete "${CLUSTER_NAME}" --zone="${CLUSTER_LOCATION}" --project="${PROJECT_ID}" --quiet || true
@@ -61,10 +67,15 @@ else
   gcloud iam service-accounts delete "${GSA_EMAIL}" --project="${PROJECT_ID}" --quiet || true
 fi
 
-# 4. Delete compiled task-runner and platform container images from GCR
+# 4. Delete compiled task-runner and platform container images from GCR / Artifact Registry
 echo "==> 4. Deleting published container images..."
-for img in $(gcloud artifacts docker images list "${KO_DOCKER_REPO}" --format='value(package)' 2>/dev/null || gcloud container images list --repository="${KO_DOCKER_REPO}" --format='value(name)' 2>/dev/null); do
-  gcloud artifacts docker images delete "${img}" --delete-tags --quiet 2>/dev/null || gcloud container images delete "${img}" --force-delete-tags --quiet 2>/dev/null || true
+for img in $(gcloud container images list --repository="${KO_DOCKER_REPO}" --format='value(name)' 2>/dev/null || true); do
+  echo "Deleting container image: ${img}"
+  for digest in $(gcloud container images list-tags "${img}" --format=json 2>/dev/null | jq -r '.[].digest // empty'); do
+    echo "  Deleting digest: ${digest}"
+    gcloud container images delete "${img}@${digest}" --force-delete-tags --quiet 2>/dev/null || true
+  done
+  gcloud container images delete "${img}" --force-delete-tags --quiet 2>/dev/null || true
 done
 
 echo "Teardown complete. All GCP resources for ${RESOURCE_PREFIX} have been cleaned up."
