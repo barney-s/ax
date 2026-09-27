@@ -2,6 +2,8 @@
 
 All four kinds can live in one multi-document YAML file. See [`examples/task.yaml`](../examples/task.yaml) for a complete, working set.
 
+`metadata.name` and `metadata.atespace` become Substrate resource names, so they must be lowercase RFC 1123 labels: at most 63 lowercase alphanumeric characters or `-`, starting and ending with an alphanumeric character. `ax apply` rejects anything else up front rather than letting the task fail later with `ActorCreationFailed`.
+
 ## Task
 
 ```yaml
@@ -29,9 +31,6 @@ spec:
     - name: default-workspace
       path: "/workspace"
       goal: "Install dependencies and run the test suite"   # Antigravity prepares the workspace to this goal on first run
-
-  gateway:
-    name: default-gateway
 
   debug: true   # serve guest services inside the sandbox so `ax ssh` works; off by default
 ```
@@ -64,6 +63,12 @@ spec:
     - name: origin
       repo: "https://github.com/chalk/chalk.git"
       branch: "main"
+  files:
+    - path: "AGENTS.md"
+      content: |
+        # Project Guidelines
+        - Run `go test ./...` before submitting changes.
+        - Keep dependencies minimal.
   mcp:
     registries:
       - provider: google
@@ -78,28 +83,6 @@ spec:
     path: "/.agents/skills"
 ```
 
-## Gateway
-
-```yaml
-apiVersion: ax.io/v1alpha1
-kind: Gateway
-metadata:
-  name: default-gateway
-  atespace: default
-spec:
-  listeners:
-    - name: grpc
-      port: 8494
-      protocol: gRPC
-    - name: http
-      port: 8080
-      protocol: HTTP
-  egress:
-    allowlist:
-      hosts:
-        - host: "*"      # allow everything on 443; tighten this in production
-          port: 443
-```
 
 ## Model
 
@@ -123,8 +106,6 @@ spec:
   secretKey:
     name: gemini-api-secret
     key: GEMINI_API_KEY
-  parameters:
-    temperature: 0.9
 ```
 
 For Anthropic models, store the key the same way and set `provider: anthropic`.
@@ -147,5 +128,4 @@ spec:
     key: ANTHROPIC_API_KEY
   parameters:
     maxTokens: 16000
-    temperature: 0.9
 ```

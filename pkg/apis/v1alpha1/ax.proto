@@ -29,17 +29,12 @@ service AX {
   // Tasks
   rpc GetTask(GetTaskRequest) returns (Task);
   rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
-  rpc UpdateTask(UpdateTaskRequest) returns (Task);
+  rpc CreateTask(CreateTaskRequest) returns (Task);
   rpc DeleteTask(DeleteTaskRequest) returns (DeleteTaskResponse);
   rpc SuspendTask(SuspendTaskRequest) returns (Task);
   rpc ResumeTask(ResumeTaskRequest) returns (Task);
   rpc WatchTask(WatchTaskRequest) returns (stream WatchTaskResponse);
 
-  // Gateways
-  rpc GetGateway(GetGatewayRequest) returns (Gateway);
-  rpc ListGateways(ListGatewaysRequest) returns (ListGatewaysResponse);
-  rpc UpdateGateway(UpdateGatewayRequest) returns (Gateway);
-  rpc DeleteGateway(DeleteGatewayRequest) returns (DeleteGatewayResponse);
 
   // Workspaces
   rpc GetWorkspace(GetWorkspaceRequest) returns (Workspace);
@@ -73,24 +68,16 @@ message Task {
 }
 
 message TaskSpec {
-  // Field 1 was `goal`, removed; the workspace goal lives on WorkspaceRef.
-  reserved 1;
-  reserved "goal";
-  bool suspend = 2;
-  string image = 3;
-  repeated string command = 4;
-  repeated EnvVar env = 5;
-  ResourceReqs resources = 6;
+  string image = 1;
+  repeated string command = 2;
+  repeated EnvVar env = 3;
+  ResourceReqs resources = 4;
   // workspaces binds one or more Workspaces, each mounted at its own path
   // under /workspace. The first entry is the task command's working directory.
-  repeated WorkspaceRef workspaces = 7;
-  GatewayRef gateway = 8;
-  // Field 9 was `policies` (budget and approval config), removed for now.
-  reserved 9;
-  reserved "policies";
+  repeated WorkspaceRef workspaces = 5;
   // debug enables the in-container guest services (process execution and file
   // access) that back `ax ssh`. Off by default.
-  bool debug = 10;
+  bool debug = 6;
 }
 
 message EnvVar {
@@ -112,10 +99,6 @@ message WorkspaceRef {
   string name = 1;
   string path = 2;
   string goal = 3;
-}
-
-message GatewayRef {
-  string name = 1;
 }
 
 message TaskStatus {
@@ -148,39 +131,6 @@ message Condition {
   string message = 5;
 }
 
-// --- Gateway ---
-
-message Gateway {
-  string api_version = 1;
-  string kind = 2;
-  ObjectMeta metadata = 3;
-  GatewaySpec spec = 4;
-}
-
-message GatewaySpec {
-  repeated Listener listeners = 1;
-  EgressConfig egress = 2;
-}
-
-message Listener {
-  string name = 1;
-  int32 port = 2;
-  string protocol = 3;
-}
-
-message EgressConfig {
-  EgressAllowlist allowlist = 1;
-}
-
-message EgressAllowlist {
-  repeated HostRule hosts = 1;
-}
-
-message HostRule {
-  string host = 1;
-  int32 port = 2;
-}
-
 // --- Workspace ---
 
 message Workspace {
@@ -192,8 +142,9 @@ message Workspace {
 
 message WorkspaceSpec {
   repeated GitRepo git = 1;
-  MCPConfig mcp = 2;
-  SkillsConfig skills = 3;
+  repeated File files = 2;
+  MCPConfig mcp = 3;
+  SkillsConfig skills = 4;
 }
 
 message GitRepo {
@@ -202,6 +153,11 @@ message GitRepo {
   string branch = 3;
   string dir = 4;
   int32 depth = 5;
+}
+
+message File {
+  string path = 1;
+  string content = 2;
 }
 
 message MCPConfig {
@@ -279,7 +235,7 @@ message ListTasksResponse {
   repeated Task tasks = 1;
 }
 
-message UpdateTaskRequest {
+message CreateTaskRequest {
   Task task = 1;
 }
 
@@ -309,31 +265,6 @@ message WatchTaskResponse {
   Task task = 1;
   string action = 2;
 }
-
-// Gateways
-message GetGatewayRequest {
-  string atespace = 1;
-  string name = 2;
-}
-
-message ListGatewaysRequest {
-  string atespace = 1;
-}
-
-message ListGatewaysResponse {
-  repeated Gateway gateways = 1;
-}
-
-message UpdateGatewayRequest {
-  Gateway gateway = 1;
-}
-
-message DeleteGatewayRequest {
-  string atespace = 1;
-  string name = 2;
-}
-
-message DeleteGatewayResponse {}
 
 // Workspaces
 message GetWorkspaceRequest {

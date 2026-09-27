@@ -92,7 +92,7 @@ func NewTaskReconciler(client *substrate.Client, defaultTemplate, defaultTemplat
 }
 
 // Reconcile handles the reconciliation loop for a single Task.
-func (r *TaskReconciler) Reconcile(ctx context.Context, task *v1alpha1.Task, gateway *v1alpha1.Gateway, workspaces ...*v1alpha1.Workspace) (*v1alpha1.Task, error) {
+func (r *TaskReconciler) Reconcile(ctx context.Context, task *v1alpha1.Task, workspaces ...*v1alpha1.Workspace) (*v1alpha1.Task, error) {
 	if task.Metadata == nil {
 		task.Metadata = &v1alpha1.ObjectMeta{}
 	}
@@ -154,11 +154,10 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, task *v1alpha1.Task, gat
 		extraEnv[geminiSecretKey] = geminiKey
 	}
 
-	// Only launch configuration belongs in the template; status and suspend
-	// changes must not create new golden snapshots.
+	// Only launch configuration belongs in the template; status changes
+	// must not create new golden snapshots.
 	launchTask := proto.Clone(task).(*v1alpha1.Task)
 	launchTask.Status = nil
-	launchTask.Spec.Suspend = false
 	if taskYAML, err := yaml.Marshal(launchTask); err == nil {
 		extraEnv["AX_TASK_YAML"] = string(taskYAML)
 	}
@@ -190,32 +189,12 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, task *v1alpha1.Task, gat
 		return task, fmt.Errorf("ensuring actor: %w", err)
 	}
 
-	// 4. Apply Egress Policy to Actor
-	var egressAllowlist *v1alpha1.EgressAllowlist
-	if gateway != nil && gateway.Spec != nil && gateway.Spec.Egress != nil && gateway.Spec.Egress.Allowlist != nil {
-		egressAllowlist = gateway.Spec.Egress.Allowlist
-	} else {
-		// Default to allow all egress if no explicit gateway restriction is set
-		egressAllowlist = &v1alpha1.EgressAllowlist{
-			Hosts: []*v1alpha1.HostRule{
-				{Host: "*", Port: 443},
-			},
-		}
-	}
-	if err := r.client.ApplyEgressPolicy(ctx, atespace, actorName, egressAllowlist); err != nil {
-		slog.Warn("could not apply egress policy (continuing)", "actor", actorName, "error", err)
-		r.setCondition(task, condGatewayReady, "False", "PolicyApplyFailed", err.Error(), now)
-	} else {
-		r.setCondition(task, condGatewayReady, "True", "PoliciesApplied", "Network policies active", now)
-	}
-
-	// 5. Suspend or Resume the Actor
-	if task.Spec != nil && task.Spec.Suspend {
+	// 4. Suspend or Resume the Actor
+	// Tasks are suspended by default upon creation until explicitly resumed to "Running".
+	if task.Status.Phase == "Suspended" || task.Status.Phase == "" {
 		slog.Info("suspending actor on Substrate", "actor", actorName)
 		if err := r.client.SuspendActor(ctx, atespace, actorName); err != nil {
-			r.setNotReady(task, "ActorSuspendFailed", err.Error(), now)
-			task.Status.Phase = "Failed"
-			return task, fmt.Errorf("suspending actor: %w", err)
+			slog.Warn("could not suspend actor on Substrate", "error", err)
 		}
 		task.Status.WorkerIp = ""
 		task.Status.Phase = "Suspended"
@@ -327,8 +306,6 @@ const (
 	condReady = "Ready"
 	// condWorkspaceReady reports whether the workspace inside the actor has finished setting up.
 	condWorkspaceReady = "WorkspaceReady"
-	// condGatewayReady reports whether the gateway's network policies were applied to the actor.
-	condGatewayReady = "GatewayReady"
 )
 
 // setNotReady marks the task's Ready condition False. WorkspaceReady is left untouched:

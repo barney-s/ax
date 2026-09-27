@@ -35,15 +35,11 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	AX_GetTask_FullMethodName         = "/ax.v1alpha1.AX/GetTask"
 	AX_ListTasks_FullMethodName       = "/ax.v1alpha1.AX/ListTasks"
-	AX_UpdateTask_FullMethodName      = "/ax.v1alpha1.AX/UpdateTask"
+	AX_CreateTask_FullMethodName      = "/ax.v1alpha1.AX/CreateTask"
 	AX_DeleteTask_FullMethodName      = "/ax.v1alpha1.AX/DeleteTask"
 	AX_SuspendTask_FullMethodName     = "/ax.v1alpha1.AX/SuspendTask"
 	AX_ResumeTask_FullMethodName      = "/ax.v1alpha1.AX/ResumeTask"
 	AX_WatchTask_FullMethodName       = "/ax.v1alpha1.AX/WatchTask"
-	AX_GetGateway_FullMethodName      = "/ax.v1alpha1.AX/GetGateway"
-	AX_ListGateways_FullMethodName    = "/ax.v1alpha1.AX/ListGateways"
-	AX_UpdateGateway_FullMethodName   = "/ax.v1alpha1.AX/UpdateGateway"
-	AX_DeleteGateway_FullMethodName   = "/ax.v1alpha1.AX/DeleteGateway"
 	AX_GetWorkspace_FullMethodName    = "/ax.v1alpha1.AX/GetWorkspace"
 	AX_ListWorkspaces_FullMethodName  = "/ax.v1alpha1.AX/ListWorkspaces"
 	AX_UpdateWorkspace_FullMethodName = "/ax.v1alpha1.AX/UpdateWorkspace"
@@ -63,16 +59,11 @@ type AXClient interface {
 	// Tasks
 	GetTask(ctx context.Context, in *GetTaskRequest, opts ...grpc.CallOption) (*Task, error)
 	ListTasks(ctx context.Context, in *ListTasksRequest, opts ...grpc.CallOption) (*ListTasksResponse, error)
-	UpdateTask(ctx context.Context, in *UpdateTaskRequest, opts ...grpc.CallOption) (*Task, error)
+	CreateTask(ctx context.Context, in *CreateTaskRequest, opts ...grpc.CallOption) (*Task, error)
 	DeleteTask(ctx context.Context, in *DeleteTaskRequest, opts ...grpc.CallOption) (*DeleteTaskResponse, error)
 	SuspendTask(ctx context.Context, in *SuspendTaskRequest, opts ...grpc.CallOption) (*Task, error)
 	ResumeTask(ctx context.Context, in *ResumeTaskRequest, opts ...grpc.CallOption) (*Task, error)
 	WatchTask(ctx context.Context, in *WatchTaskRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WatchTaskResponse], error)
-	// Gateways
-	GetGateway(ctx context.Context, in *GetGatewayRequest, opts ...grpc.CallOption) (*Gateway, error)
-	ListGateways(ctx context.Context, in *ListGatewaysRequest, opts ...grpc.CallOption) (*ListGatewaysResponse, error)
-	UpdateGateway(ctx context.Context, in *UpdateGatewayRequest, opts ...grpc.CallOption) (*Gateway, error)
-	DeleteGateway(ctx context.Context, in *DeleteGatewayRequest, opts ...grpc.CallOption) (*DeleteGatewayResponse, error)
 	// Workspaces
 	GetWorkspace(ctx context.Context, in *GetWorkspaceRequest, opts ...grpc.CallOption) (*Workspace, error)
 	ListWorkspaces(ctx context.Context, in *ListWorkspacesRequest, opts ...grpc.CallOption) (*ListWorkspacesResponse, error)
@@ -113,10 +104,10 @@ func (c *aXClient) ListTasks(ctx context.Context, in *ListTasksRequest, opts ...
 	return out, nil
 }
 
-func (c *aXClient) UpdateTask(ctx context.Context, in *UpdateTaskRequest, opts ...grpc.CallOption) (*Task, error) {
+func (c *aXClient) CreateTask(ctx context.Context, in *CreateTaskRequest, opts ...grpc.CallOption) (*Task, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Task)
-	err := c.cc.Invoke(ctx, AX_UpdateTask_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, AX_CreateTask_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -171,46 +162,6 @@ func (c *aXClient) WatchTask(ctx context.Context, in *WatchTaskRequest, opts ...
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AX_WatchTaskClient = grpc.ServerStreamingClient[WatchTaskResponse]
-
-func (c *aXClient) GetGateway(ctx context.Context, in *GetGatewayRequest, opts ...grpc.CallOption) (*Gateway, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Gateway)
-	err := c.cc.Invoke(ctx, AX_GetGateway_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *aXClient) ListGateways(ctx context.Context, in *ListGatewaysRequest, opts ...grpc.CallOption) (*ListGatewaysResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListGatewaysResponse)
-	err := c.cc.Invoke(ctx, AX_ListGateways_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *aXClient) UpdateGateway(ctx context.Context, in *UpdateGatewayRequest, opts ...grpc.CallOption) (*Gateway, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Gateway)
-	err := c.cc.Invoke(ctx, AX_UpdateGateway_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *aXClient) DeleteGateway(ctx context.Context, in *DeleteGatewayRequest, opts ...grpc.CallOption) (*DeleteGatewayResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DeleteGatewayResponse)
-	err := c.cc.Invoke(ctx, AX_DeleteGateway_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
 
 func (c *aXClient) GetWorkspace(ctx context.Context, in *GetWorkspaceRequest, opts ...grpc.CallOption) (*Workspace, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -301,16 +252,11 @@ type AXServer interface {
 	// Tasks
 	GetTask(context.Context, *GetTaskRequest) (*Task, error)
 	ListTasks(context.Context, *ListTasksRequest) (*ListTasksResponse, error)
-	UpdateTask(context.Context, *UpdateTaskRequest) (*Task, error)
+	CreateTask(context.Context, *CreateTaskRequest) (*Task, error)
 	DeleteTask(context.Context, *DeleteTaskRequest) (*DeleteTaskResponse, error)
 	SuspendTask(context.Context, *SuspendTaskRequest) (*Task, error)
 	ResumeTask(context.Context, *ResumeTaskRequest) (*Task, error)
 	WatchTask(*WatchTaskRequest, grpc.ServerStreamingServer[WatchTaskResponse]) error
-	// Gateways
-	GetGateway(context.Context, *GetGatewayRequest) (*Gateway, error)
-	ListGateways(context.Context, *ListGatewaysRequest) (*ListGatewaysResponse, error)
-	UpdateGateway(context.Context, *UpdateGatewayRequest) (*Gateway, error)
-	DeleteGateway(context.Context, *DeleteGatewayRequest) (*DeleteGatewayResponse, error)
 	// Workspaces
 	GetWorkspace(context.Context, *GetWorkspaceRequest) (*Workspace, error)
 	ListWorkspaces(context.Context, *ListWorkspacesRequest) (*ListWorkspacesResponse, error)
@@ -337,8 +283,8 @@ func (UnimplementedAXServer) GetTask(context.Context, *GetTaskRequest) (*Task, e
 func (UnimplementedAXServer) ListTasks(context.Context, *ListTasksRequest) (*ListTasksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListTasks not implemented")
 }
-func (UnimplementedAXServer) UpdateTask(context.Context, *UpdateTaskRequest) (*Task, error) {
-	return nil, status.Error(codes.Unimplemented, "method UpdateTask not implemented")
+func (UnimplementedAXServer) CreateTask(context.Context, *CreateTaskRequest) (*Task, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateTask not implemented")
 }
 func (UnimplementedAXServer) DeleteTask(context.Context, *DeleteTaskRequest) (*DeleteTaskResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteTask not implemented")
@@ -351,18 +297,6 @@ func (UnimplementedAXServer) ResumeTask(context.Context, *ResumeTaskRequest) (*T
 }
 func (UnimplementedAXServer) WatchTask(*WatchTaskRequest, grpc.ServerStreamingServer[WatchTaskResponse]) error {
 	return status.Error(codes.Unimplemented, "method WatchTask not implemented")
-}
-func (UnimplementedAXServer) GetGateway(context.Context, *GetGatewayRequest) (*Gateway, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetGateway not implemented")
-}
-func (UnimplementedAXServer) ListGateways(context.Context, *ListGatewaysRequest) (*ListGatewaysResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListGateways not implemented")
-}
-func (UnimplementedAXServer) UpdateGateway(context.Context, *UpdateGatewayRequest) (*Gateway, error) {
-	return nil, status.Error(codes.Unimplemented, "method UpdateGateway not implemented")
-}
-func (UnimplementedAXServer) DeleteGateway(context.Context, *DeleteGatewayRequest) (*DeleteGatewayResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method DeleteGateway not implemented")
 }
 func (UnimplementedAXServer) GetWorkspace(context.Context, *GetWorkspaceRequest) (*Workspace, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetWorkspace not implemented")
@@ -445,20 +379,20 @@ func _AX_ListTasks_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
-func _AX_UpdateTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateTaskRequest)
+func _AX_CreateTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateTaskRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AXServer).UpdateTask(ctx, in)
+		return srv.(AXServer).CreateTask(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: AX_UpdateTask_FullMethodName,
+		FullMethod: AX_CreateTask_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AXServer).UpdateTask(ctx, req.(*UpdateTaskRequest))
+		return srv.(AXServer).CreateTask(ctx, req.(*CreateTaskRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -527,78 +461,6 @@ func _AX_WatchTask_Handler(srv interface{}, stream grpc.ServerStream) error {
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AX_WatchTaskServer = grpc.ServerStreamingServer[WatchTaskResponse]
-
-func _AX_GetGateway_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetGatewayRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AXServer).GetGateway(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AX_GetGateway_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AXServer).GetGateway(ctx, req.(*GetGatewayRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _AX_ListGateways_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListGatewaysRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AXServer).ListGateways(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AX_ListGateways_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AXServer).ListGateways(ctx, req.(*ListGatewaysRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _AX_UpdateGateway_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateGatewayRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AXServer).UpdateGateway(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AX_UpdateGateway_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AXServer).UpdateGateway(ctx, req.(*UpdateGatewayRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _AX_DeleteGateway_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeleteGatewayRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AXServer).DeleteGateway(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AX_DeleteGateway_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AXServer).DeleteGateway(ctx, req.(*DeleteGatewayRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
 
 func _AX_GetWorkspace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetWorkspaceRequest)
@@ -760,8 +622,8 @@ var AX_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AX_ListTasks_Handler,
 		},
 		{
-			MethodName: "UpdateTask",
-			Handler:    _AX_UpdateTask_Handler,
+			MethodName: "CreateTask",
+			Handler:    _AX_CreateTask_Handler,
 		},
 		{
 			MethodName: "DeleteTask",
@@ -774,22 +636,6 @@ var AX_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ResumeTask",
 			Handler:    _AX_ResumeTask_Handler,
-		},
-		{
-			MethodName: "GetGateway",
-			Handler:    _AX_GetGateway_Handler,
-		},
-		{
-			MethodName: "ListGateways",
-			Handler:    _AX_ListGateways_Handler,
-		},
-		{
-			MethodName: "UpdateGateway",
-			Handler:    _AX_UpdateGateway_Handler,
-		},
-		{
-			MethodName: "DeleteGateway",
-			Handler:    _AX_DeleteGateway_Handler,
 		},
 		{
 			MethodName: "GetWorkspace",

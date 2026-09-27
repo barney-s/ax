@@ -89,14 +89,6 @@ func TestServerGRPC(t *testing.T) {
 
 	// 1. Create one resource of each kind through the typed RPCs. Metadata is left
 	// partially empty to exercise server-side defaulting.
-	if _, err := client.UpdateGateway(ctx, &v1alpha1.UpdateGatewayRequest{Gateway: &v1alpha1.Gateway{
-		Metadata: &v1alpha1.ObjectMeta{Name: "grpc-gw"},
-		Spec: &v1alpha1.GatewaySpec{
-			Listeners: []*v1alpha1.Listener{{Name: "http", Port: 80, Protocol: "HTTP"}},
-		},
-	}}); err != nil {
-		t.Fatalf("UpdateGateway failed: %v", err)
-	}
 	if _, err := client.UpdateWorkspace(ctx, &v1alpha1.UpdateWorkspaceRequest{Workspace: &v1alpha1.Workspace{
 		Metadata: &v1alpha1.ObjectMeta{Name: "grpc-ws"},
 		Spec:     &v1alpha1.WorkspaceSpec{},
@@ -109,20 +101,20 @@ func TestServerGRPC(t *testing.T) {
 	}}); err != nil {
 		t.Fatalf("UpdateModel failed: %v", err)
 	}
-	if _, err := client.UpdateTask(ctx, &v1alpha1.UpdateTaskRequest{Task: &v1alpha1.Task{
+	if _, err := client.CreateTask(ctx, &v1alpha1.CreateTaskRequest{Task: &v1alpha1.Task{
 		Metadata: &v1alpha1.ObjectMeta{Name: "grpc-task"},
 		Spec:     &v1alpha1.TaskSpec{Image: "alpine"},
 	}}); err != nil {
-		t.Fatalf("UpdateTask failed: %v", err)
+		t.Fatalf("CreateTask failed: %v", err)
 	}
 
 	// 2. Defaulting applies to every kind: atespace and creation timestamp are filled in.
-	gw, err := client.GetGateway(ctx, &v1alpha1.GetGatewayRequest{Atespace: "default", Name: "grpc-gw"})
+	ws, err := client.GetWorkspace(ctx, &v1alpha1.GetWorkspaceRequest{Atespace: "default", Name: "grpc-ws"})
 	if err != nil {
-		t.Fatalf("GetGateway failed: %v", err)
+		t.Fatalf("GetWorkspace failed: %v", err)
 	}
-	if gw.GetMetadata().GetAtespace() != "default" || gw.GetMetadata().GetCreationTimestamp() == nil {
-		t.Errorf("expected gateway metadata to be defaulted, got %v", gw.GetMetadata())
+	if ws.GetMetadata().GetAtespace() != "default" || ws.GetMetadata().GetCreationTimestamp() == nil {
+		t.Errorf("expected workspace metadata to be defaulted, got %v", ws.GetMetadata())
 	}
 
 	// 3. GetTask & ListTasks
@@ -148,14 +140,14 @@ func TestServerGRPC(t *testing.T) {
 		t.Errorf("expected creation timestamp on listed task")
 	}
 
-	// Test UpdateTask
+	// Test that Task is immutable
 	task.Spec.Image = "ghcr.io/test/updated-image"
-	updatedTask, err := client.UpdateTask(ctx, &v1alpha1.UpdateTaskRequest{Task: task})
-	if err != nil {
-		t.Fatalf("UpdateTask failed: %v", err)
+	_, err = client.CreateTask(ctx, &v1alpha1.CreateTaskRequest{Task: task})
+	if err == nil {
+		t.Fatalf("expected CreateTask to fail on existing task because tasks are immutable")
 	}
-	if updatedTask.Spec.Image != "ghcr.io/test/updated-image" {
-		t.Errorf("expected image 'ghcr.io/test/updated-image', got %s", updatedTask.Spec.Image)
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Errorf("expected FailedPrecondition code, got %v", status.Code(err))
 	}
 
 	// 4. Suspend & Resume Task
@@ -163,37 +155,21 @@ func TestServerGRPC(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SuspendTask failed: %v", err)
 	}
-	if !suspTask.Spec.Suspend {
-		t.Errorf("expected task to be suspended")
+	if suspTask.Status.Phase != "Suspended" {
+		t.Errorf("expected task phase to be 'Suspended', got %q", suspTask.Status.Phase)
 	}
 
 	resTask, err := client.ResumeTask(ctx, &v1alpha1.ResumeTaskRequest{Atespace: "default", Name: "grpc-task"})
 	if err != nil {
 		t.Fatalf("ResumeTask failed: %v", err)
 	}
-	if resTask.Spec.Suspend {
-		t.Errorf("expected task to be resumed")
+	if resTask.Status.Phase != "Running" {
+		t.Errorf("expected task phase to be 'Running', got %q", resTask.Status.Phase)
 	}
 
-	// 5. Gateways
-	gw, err = client.GetGateway(ctx, &v1alpha1.GetGatewayRequest{Atespace: "default", Name: "grpc-gw"})
-	if err != nil {
-		t.Fatalf("GetGateway failed: %v", err)
-	}
-	if gw.Metadata.Name != "grpc-gw" {
-		t.Errorf("expected gateway 'grpc-gw', got %s", gw.Metadata.Name)
-	}
 
-	listGatewaysResp, err := client.ListGateways(ctx, &v1alpha1.ListGatewaysRequest{Atespace: "default"})
-	if err != nil {
-		t.Fatalf("ListGateways failed: %v", err)
-	}
-	if len(listGatewaysResp.Gateways) != 1 {
-		t.Fatalf("expected 1 gateway in list, got %d", len(listGatewaysResp.Gateways))
-	}
-
-	// 6. Workspaces
-	ws, err := client.GetWorkspace(ctx, &v1alpha1.GetWorkspaceRequest{Atespace: "default", Name: "grpc-ws"})
+	// 5. Workspaces
+	ws, err = client.GetWorkspace(ctx, &v1alpha1.GetWorkspaceRequest{Atespace: "default", Name: "grpc-ws"})
 	if err != nil {
 		t.Fatalf("GetWorkspace failed: %v", err)
 	}
@@ -262,9 +238,6 @@ func TestServerGRPC(t *testing.T) {
 	if err := memStore.DeleteTask(ctx, "default", "grpc-task"); err != nil {
 		t.Fatalf("removing task record failed: %v", err)
 	}
-	if _, err := client.DeleteGateway(ctx, &v1alpha1.DeleteGatewayRequest{Atespace: "default", Name: "grpc-gw"}); err != nil {
-		t.Fatalf("DeleteGateway failed: %v", err)
-	}
 	if _, err := client.DeleteWorkspace(ctx, &v1alpha1.DeleteWorkspaceRequest{Atespace: "default", Name: "grpc-ws"}); err != nil {
 		t.Fatalf("DeleteWorkspace failed: %v", err)
 	}
@@ -279,11 +252,53 @@ func TestServerGRPC(t *testing.T) {
 	}
 }
 
-func TestUpdateTask_ValidatesWorkspaceBindings(t *testing.T) {
+// Names and atespaces become Substrate resource names, which must be RFC 1123
+// labels. The server rejects them up front instead of letting the controller
+// fail asynchronously with ActorCreationFailed.
+func TestCreate_RejectsInvalidNames(t *testing.T) {
 	srv := server.NewServer(memory.NewStore())
 	ctx := context.Background()
 
-	_, err := srv.UpdateTask(ctx, &v1alpha1.UpdateTaskRequest{Task: &v1alpha1.Task{
+	for _, meta := range []*v1alpha1.ObjectMeta{
+		{Name: "Task-With-Caps"},
+		{Name: "under_score"},
+		{Name: ""},
+		{Name: "ok", Atespace: "Not-Lowercase"},
+	} {
+		if _, err := srv.CreateTask(ctx, &v1alpha1.CreateTaskRequest{Task: &v1alpha1.Task{Metadata: meta}}); status.Code(err) != codes.InvalidArgument {
+			t.Errorf("CreateTask(%v): got %v, want InvalidArgument", meta, err)
+		}
+		if _, err := srv.UpdateWorkspace(ctx, &v1alpha1.UpdateWorkspaceRequest{Workspace: &v1alpha1.Workspace{Metadata: meta}}); status.Code(err) != codes.InvalidArgument {
+			t.Errorf("UpdateWorkspace(%v): got %v, want InvalidArgument", meta, err)
+		}
+		if _, err := srv.UpdateModel(ctx, &v1alpha1.UpdateModelRequest{Model: &v1alpha1.Model{Metadata: meta}}); status.Code(err) != codes.InvalidArgument {
+			t.Errorf("UpdateModel(%v): got %v, want InvalidArgument", meta, err)
+		}
+	}
+
+	// Nothing invalid was persisted.
+	if resp, err := srv.ListTasks(ctx, &v1alpha1.ListTasksRequest{}); err != nil || len(resp.GetTasks()) != 0 {
+		t.Errorf("ListTasks after rejected applies = %v, %v; want empty", resp.GetTasks(), err)
+	}
+
+	// Valid names still go through, with and without an explicit atespace.
+	good := &v1alpha1.ObjectMeta{Name: "task-with-caps", Atespace: "team-a"}
+	if _, err := srv.CreateTask(ctx, &v1alpha1.CreateTaskRequest{Task: &v1alpha1.Task{Metadata: good}}); err != nil {
+		t.Errorf("CreateTask(%v): %v", good, err)
+	}
+	if _, err := srv.UpdateWorkspace(ctx, &v1alpha1.UpdateWorkspaceRequest{Workspace: &v1alpha1.Workspace{Metadata: &v1alpha1.ObjectMeta{Name: "ws-1"}}}); err != nil {
+		t.Errorf("UpdateWorkspace: %v", err)
+	}
+	if _, err := srv.UpdateModel(ctx, &v1alpha1.UpdateModelRequest{Model: &v1alpha1.Model{Metadata: &v1alpha1.ObjectMeta{Name: "gemini"}}}); err != nil {
+		t.Errorf("UpdateModel: %v", err)
+	}
+}
+
+func TestCreateTask_ValidatesWorkspaceBindings(t *testing.T) {
+	srv := server.NewServer(memory.NewStore())
+	ctx := context.Background()
+
+	_, err := srv.CreateTask(ctx, &v1alpha1.CreateTaskRequest{Task: &v1alpha1.Task{
 		Metadata: &v1alpha1.ObjectMeta{Name: "bad"},
 		Spec: &v1alpha1.TaskSpec{
 			Workspaces: []*v1alpha1.WorkspaceRef{{Name: "a", Path: "/same"}, {Name: "b", Path: "/same"}},
@@ -293,7 +308,7 @@ func TestUpdateTask_ValidatesWorkspaceBindings(t *testing.T) {
 		t.Fatalf("expected InvalidArgument for colliding workspace paths, got %v", err)
 	}
 
-	_, err = srv.UpdateTask(ctx, &v1alpha1.UpdateTaskRequest{Task: &v1alpha1.Task{
+	_, err = srv.CreateTask(ctx, &v1alpha1.CreateTaskRequest{Task: &v1alpha1.Task{
 		Metadata: &v1alpha1.ObjectMeta{Name: "good"},
 		Spec: &v1alpha1.TaskSpec{
 			Workspaces: []*v1alpha1.WorkspaceRef{{Name: "a"}, {Name: "b"}},

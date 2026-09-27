@@ -38,7 +38,6 @@ type mockControlServer struct {
 	createdActors    []string
 	resumedActors    []string
 	suspendedActors  []string
-	createdPolicies  []string
 	deletedActors    []string
 	actorTemplates   map[string]bool
 	deletedTemplates []string
@@ -123,14 +122,6 @@ func (m *mockControlServer) SuspendActor(ctx context.Context, req *ateapipb.Susp
 	return &ateapipb.SuspendActorResponse{}, nil
 }
 
-func (m *mockControlServer) CreateActorEgressPolicy(ctx context.Context, req *ateapipb.CreateActorEgressPolicyRequest) (*ateapipb.EgressPolicy, error) {
-	actorName := ""
-	if req.Actor != nil {
-		actorName = req.Actor.Name
-	}
-	m.createdPolicies = append(m.createdPolicies, actorName)
-	return &ateapipb.EgressPolicy{}, nil
-}
 
 func (m *mockControlServer) DeleteActor(ctx context.Context, req *ateapipb.DeleteActorRequest) (*ateapipb.Actor, error) {
 	name := req.GetActor().GetName()
@@ -193,29 +184,13 @@ func TestTaskReconciler(t *testing.T) {
 		Spec: &v1alpha1.TaskSpec{
 			Image:   "ghrc.io/my-org/my-image",
 			Command: []string{"/bin/task-runner"},
-			Gateway: &v1alpha1.GatewayRef{
-				Name: "default-gateway",
-			},
 		},
 		// A client-supplied actor name must not survive: the actor is always
 		// named after the task.
-		Status: &v1alpha1.TaskStatus{Actor: "not-the-task"},
+		Status: &v1alpha1.TaskStatus{Actor: "not-the-task", Phase: "Running"},
 	}
 
-	gateway := &v1alpha1.Gateway{
-		Spec: &v1alpha1.GatewaySpec{
-			Egress: &v1alpha1.EgressConfig{
-				Allowlist: &v1alpha1.EgressAllowlist{
-					Hosts: []*v1alpha1.HostRule{
-						{Host: "api.anthropic.com", Port: 443},
-						{Host: "github.com", Port: 443},
-					},
-				},
-			},
-		},
-	}
-
-	reconciled, err := reconciler.Reconcile(ctx, task, gateway)
+	reconciled, err := reconciler.Reconcile(ctx, task)
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
@@ -240,9 +215,6 @@ func TestTaskReconciler(t *testing.T) {
 	}
 	if len(mockSrv.resumedActors) != 1 || mockSrv.resumedActors[0] != "test-task" {
 		t.Errorf("expected actor 'test-task' resumed, got %v", mockSrv.resumedActors)
-	}
-	if len(mockSrv.createdPolicies) != 1 || mockSrv.createdPolicies[0] != "test-task" {
-		t.Errorf("expected egress policy created for 'test-task', got %v", mockSrv.createdPolicies)
 	}
 }
 
@@ -279,8 +251,7 @@ func TestTaskReconciler_Suspend(t *testing.T) {
 			Atespace: "default",
 		},
 		Spec: &v1alpha1.TaskSpec{
-			Suspend: true,
-			Image:   "ghrc.io/my-org/my-image",
+			Image: "ghrc.io/my-org/my-image",
 		},
 	}
 
@@ -357,6 +328,9 @@ func TestTaskReconciler_WorkspaceReady(t *testing.T) {
 			Atespace: "default",
 		},
 		Spec: &v1alpha1.TaskSpec{},
+		Status: &v1alpha1.TaskStatus{
+			Phase: "Running",
+		},
 	}
 
 	// Case 1: Worker not responding on readyz -> WorkspaceReady=False and Ready=False.
@@ -379,7 +353,7 @@ func TestTaskReconciler_WorkspaceReady(t *testing.T) {
 	// Case 3: Suspending the task -> Ready=False (TaskSuspended), but the workspace was
 	// already initialized so WorkspaceReady stays True.
 	task = reconciledReady
-	task.Spec.Suspend = true
+	task.Status.Phase = "Suspended"
 	reconciledSuspended, err := reconciler.Reconcile(ctx, task, nil)
 	if err != nil {
 		t.Fatalf("Reconcile with suspend failed: %v", err)
@@ -394,7 +368,7 @@ func TestTaskReconciler_WorkspaceReady(t *testing.T) {
 	// WorkspaceReady instead of re-polling, so the task is Ready again immediately.
 	mockSrv.workerIP = "127.0.0.1:1"
 	task = reconciledSuspended
-	task.Spec.Suspend = false
+	task.Status.Phase = "Running"
 	reconciledResumed, err := reconciler.Reconcile(ctx, task, nil)
 	if err != nil {
 		t.Fatalf("Reconcile with resume failed: %v", err)

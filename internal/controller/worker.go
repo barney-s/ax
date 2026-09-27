@@ -126,15 +126,11 @@ func (w *Worker) processEvent(ctx context.Context, ev store.TaskEvent) error {
 		}
 		return fmt.Errorf("fetching task %s/%s: %w", ev.Atespace, ev.Name, err)
 	}
-
-	var gw *v1alpha1.Gateway
-	if task.Spec.Gateway != nil && task.Spec.Gateway.Name != "" {
-		g, err := w.store.GetGateway(ctx, task.Metadata.Atespace, task.Spec.Gateway.Name)
-		if err == nil {
-			gw = g
-		} else if !errors.Is(err, store.ErrNotFound) {
-			slog.Warn("error fetching gateway", "name", task.Spec.Gateway.Name, "error", err)
-		}
+	// A pending delete event owns this task now; reconciling would resume an actor
+	// that is about to be torn down and overwrite the Terminating phase.
+	if task.GetStatus().GetPhase() == v1alpha1.PhaseTerminating {
+		slog.Info("task is terminating, skipping reconcile", "atespace", ev.Atespace, "name", ev.Name)
+		return nil
 	}
 
 	// Resolve every bound workspace. A missing one is skipped so the task still
@@ -152,7 +148,7 @@ func (w *Worker) processEvent(ctx context.Context, ev store.TaskEvent) error {
 		}
 	}
 
-	reconciled, err := w.reconciler.Reconcile(ctx, task, gw, workspaces...)
+	reconciled, err := w.reconciler.Reconcile(ctx, task, workspaces...)
 	if err != nil {
 		task.Status.Phase = "Failed"
 		_ = w.store.UpdateTaskStatus(ctx, task.Metadata.Atespace, task.Metadata.Name, task.Status)

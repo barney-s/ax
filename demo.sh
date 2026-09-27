@@ -21,29 +21,31 @@
 #   4. Suspend the task, checkpointing its workspace.
 #
 # Environment:
-#   AX_BIN    path to the ax CLI            (default: ./bin/ax)
-#   ATESPACE  atespace to run the demo in   (default: default)
-#   NO_COLOR  set to disable colored output
+#   AX_BIN               path to the ax CLI                        (default: ./bin/ax)
+#   ATESPACE             atespace to run the demo in               (default: default)
+#   SUBSTRATE_NAMESPACE  namespace Agent Substrate is installed in (default: ate-system)
+#   NO_COLOR             set to disable colored output
 
 set -euo pipefail
 
 AX_BIN="${AX_BIN:-./bin/ax}"
+SUBSTRATE_NAMESPACE="${SUBSTRATE_NAMESPACE:-ate-system}"
 
 # ax runs the CLI at AX_BIN so the commands below read the way you would type them.
 ax() { "${AX_BIN}" "$@"; }
 ATESPACE="${ATESPACE:-default}"
-TASK_NAME="test-task"
+TASK_NAME="demo-task"
 WORKSPACE_NAME="demo-workspace"
-TASK_IMAGE="${AX_TASK_IMAGE:-${AX_IMAGE_REPO:-gcr.io/dberkov-gke-dev3}/ax-task-runner@sha256:127dbe6650f2b93e5af793a9d7995ce0cf70c0f37ffb4c696154d3cc1a32f8bd}"
+TASK_IMAGE="${AX_TASK_IMAGE:-${AX_IMAGE_REPO:-gcr.io/ax-substrate/ate-images}/ax-task-runner@sha256:464c5a53c68c67e929dbbb5450f1eb41f99b2742efcf42b721c09825a58397f1}"
 
 # ---------------------------------------------------------------------------
 # Presentation helpers
 # ---------------------------------------------------------------------------
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
-  BOLD=$'\e[1m'; DIM=$'\e[2m'; CYAN=$'\e[36m'; GREEN=$'\e[32m'; YELLOW=$'\e[33m'; RESET=$'\e[0m'
+  BOLD=$'\e[1m'; DIM=$'\e[2m'; CYAN=$'\e[36m'; GREEN=$'\e[32m'; YELLOW=$'\e[33m'; RED=$'\e[31m'; RESET=$'\e[0m'
 else
-  BOLD=""; DIM=""; CYAN=""; GREEN=""; YELLOW=""; RESET=""
+  BOLD=""; DIM=""; CYAN=""; GREEN=""; YELLOW=""; RED=""; RESET=""
 fi
 
 STEP=0
@@ -66,6 +68,7 @@ in_sandbox() {
 
 ok()   { printf '%s✔ %s%s\n' "${GREEN}" "$*" "${RESET}"; }
 note() { printf '%s%s%s\n' "${YELLOW}" "$*" "${RESET}"; }
+err()  { printf '%s✘ %s%s\n' "${RED}" "$*" "${RESET}"; }
 task_field() {
   ax describe task "${TASK_NAME}" -a "${ATESPACE}" 2>/dev/null | awk -v key="$1" '$1 == key {print $2}'
 }
@@ -87,6 +90,12 @@ wait_for() {
       printf ' %s%ds%s\n' "${GREEN}" "${elapsed}" "${RESET}"
       return 0
     fi
+    if [[ "${phase}" == "Failed" && "${want_phase}" != "Failed" ]]; then
+      printf '\n'
+      err "Task entered Failed phase! Last seen Ready=${ready:-?}"
+      ax describe task "${TASK_NAME}" -a "${ATESPACE}" || true
+      return 1
+    fi
     if (( $(date +%s) - start > timeout )); then
       printf '\n'
       note "Gave up after ${timeout}s. Last seen Phase=${phase:-?} Ready=${ready:-?}"
@@ -94,7 +103,7 @@ wait_for() {
       return 1
     fi
     printf '.'
-    sleep 2
+    sleep 0.2
   done
 }
 
@@ -104,6 +113,27 @@ wait_for() {
 
 printf '\n%s🚀 AX demo%s  %sworkspace=%s task=%s atespace=%s%s\n' \
   "${BOLD}" "${RESET}" "${DIM}" "${WORKSPACE_NAME}" "${TASK_NAME}" "${ATESPACE}" "${RESET}"
+
+step "Preflight checks"
+if ! command -v "${AX_BIN}" >/dev/null 2>&1 && [[ ! -x "${AX_BIN}" ]]; then
+  err "ax CLI not found at '${AX_BIN}'. Build it with 'make build' or point AX_BIN at your binary."
+  exit 1
+fi
+ok "ax CLI found at ${AX_BIN}"
+if ! command -v kubectl >/dev/null 2>&1; then
+  err "kubectl not found. It is needed to verify that Agent Substrate is installed."
+  exit 1
+fi
+# AX schedules tasks as actors on Agent Substrate; without it every task
+# fails at actor creation. Check for its Control API before touching anything.
+if ! kubectl get svc api -n "${SUBSTRATE_NAMESPACE}" --request-timeout=10s >/dev/null 2>&1; then
+  err "Agent Substrate not detected: no 'api' Service in namespace '${SUBSTRATE_NAMESPACE}'."
+  note "Install Agent Substrate first — see the Prerequisites section of the AX README"
+  note "or https://github.com/agent-substrate/substrate. If it is installed in a"
+  note "different namespace, set SUBSTRATE_NAMESPACE."
+  exit 1
+fi
+ok "Agent Substrate Control API found in namespace ${SUBSTRATE_NAMESPACE}"
 
 step "Clean up any previous demo run"
 CLEANED=0
@@ -139,8 +169,9 @@ YAML
 printf '%s' "${DIM}"; sed 's/^/    /' "${DEMO_YAML}"; printf '%s\n\n' "${RESET}"
 run ax apply -f "${DEMO_YAML}"
 
-step "Watch the task come up"
-note "The controller creates an actor on Agent Substrate and initializes /workspace."
+step "Resume the task and watch it come up"
+note "New tasks are created Suspended by default. Resuming creates the worker on Agent Substrate and initializes /workspace."
+run ax resume task "${TASK_NAME}" -a "${ATESPACE}"
 wait_for "Running" "True"
 ok "${TASK_NAME} is Running and Ready"
 echo

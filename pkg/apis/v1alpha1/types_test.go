@@ -38,7 +38,6 @@ func fullTask() *v1alpha1.Task {
 			CreationTimestamp: timestamppb.New(time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)),
 		},
 		Spec: &v1alpha1.TaskSpec{
-			Suspend: true,
 			Image:   "example.com/img:1",
 			Command: []string{"sh", "-c", "true"},
 			Env:     []*v1alpha1.EnvVar{{Name: "A", Value: "1"}},
@@ -46,7 +45,6 @@ func fullTask() *v1alpha1.Task {
 				Requests: &v1alpha1.ResourceList{Cpu: "500m", Memory: "1Gi"},
 			},
 			Workspaces: []*v1alpha1.WorkspaceRef{{Name: "ws", Path: "/workspace", Goal: "build"}},
-			Gateway:    &v1alpha1.GatewayRef{Name: "gw"},
 			Debug:      true,
 		},
 		Status: &v1alpha1.TaskStatus{
@@ -128,40 +126,6 @@ func TestStrictDecoding_RejectsUnknownFields(t *testing.T) {
 	err := yaml.Unmarshal([]byte("kind: Task\nspec:\n  imgae: typo\n"), &task)
 	if err == nil || !strings.Contains(err.Error(), "imgae") {
 		t.Errorf("expected error naming the unknown field, got %v", err)
-	}
-
-	var gw v1alpha1.Gateway
-	err = yaml.Unmarshal([]byte("kind: Gateway\nspec:\n  egress:\n    allowlst: {}\n"), &gw)
-	if err == nil || !strings.Contains(err.Error(), "allowlst") {
-		t.Errorf("expected error naming the nested unknown field, got %v", err)
-	}
-}
-
-func TestGateway_RoundTrip(t *testing.T) {
-	want := &v1alpha1.Gateway{
-		ApiVersion: v1alpha1.APIVersion,
-		Kind:       v1alpha1.KindGateway,
-		Metadata:   &v1alpha1.ObjectMeta{Name: "gw", Atespace: "default"},
-		Spec: &v1alpha1.GatewaySpec{
-			Listeners: []*v1alpha1.Listener{{Name: "http", Port: 8080, Protocol: "HTTP"}},
-			Egress: &v1alpha1.EgressConfig{Allowlist: &v1alpha1.EgressAllowlist{
-				Hosts: []*v1alpha1.HostRule{{Host: "*", Port: 443}},
-			}},
-		},
-	}
-	out, err := yaml.Marshal(want)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got v1alpha1.Gateway
-	if err := yaml.Unmarshal(out, &got); err != nil {
-		t.Fatal(err)
-	}
-	if !proto.Equal(want, &got) {
-		t.Errorf("gateway round trip changed:\n%s", out)
-	}
-	if !strings.Contains(string(out), "port: 8080") {
-		t.Errorf("expected integer port to render unquoted:\n%s", out)
 	}
 }
 
@@ -403,6 +367,85 @@ func TestTaskSpec_WorkspaceRefs(t *testing.T) {
 	}
 }
 
+func TestValidateName(t *testing.T) {
+	valid := []string{
+		"a",
+		"0",
+		"task123",
+		"my-task",
+		"a-b-c",
+		"123-abc",
+		strings.Repeat("a", 63),
+	}
+	for _, name := range valid {
+		if err := v1alpha1.ValidateName(name); err != nil {
+			t.Errorf("ValidateName(%q) = %v, want nil", name, err)
+		}
+	}
+
+	invalid := []string{
+		"",
+		"Task-With-Caps",
+		"my_task",
+		"my.task",
+		"-leading-dash",
+		"trailing-dash-",
+		"with space",
+		"tab\tchar",
+		"ünïcödé",
+		"slash/name",
+		strings.Repeat("a", 64),
+	}
+	for _, name := range invalid {
+		if err := v1alpha1.ValidateName(name); err == nil {
+			t.Errorf("ValidateName(%q) = nil, want error", name)
+		}
+	}
+}
+
+func TestValidateObjectMeta(t *testing.T) {
+	tests := []struct {
+		name    string
+		meta    *v1alpha1.ObjectMeta
+		wantErr string
+	}{
+		{name: "nil metadata", wantErr: "metadata.name"},
+		{name: "missing name", meta: &v1alpha1.ObjectMeta{Atespace: "default"}, wantErr: `metadata.name: invalid value ""`},
+		{name: "name only", meta: &v1alpha1.ObjectMeta{Name: "task123"}},
+		{name: "name and atespace", meta: &v1alpha1.ObjectMeta{Name: "task123", Atespace: "team-a"}},
+		{name: "uppercase name", meta: &v1alpha1.ObjectMeta{Name: "Task-With-Caps"}, wantErr: `metadata.name: invalid value "Task-With-Caps"`},
+		{name: "underscore in name", meta: &v1alpha1.ObjectMeta{Name: "my_task"}, wantErr: "metadata.name"},
+		{name: "name too long", meta: &v1alpha1.ObjectMeta{Name: strings.Repeat("x", 64)}, wantErr: "metadata.name"},
+		{name: "uppercase atespace", meta: &v1alpha1.ObjectMeta{Name: "task123", Atespace: "Default"}, wantErr: `metadata.atespace: invalid value "Default"`},
+		{name: "dotted atespace", meta: &v1alpha1.ObjectMeta{Name: "task123", Atespace: "team.a"}, wantErr: "metadata.atespace"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := v1alpha1.ValidateObjectMeta(tt.meta)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+
+	// Every kind is validated the same way.
+	if err := v1alpha1.ValidateTask(&v1alpha1.Task{Metadata: &v1alpha1.ObjectMeta{Name: "Bad"}}); err == nil {
+		t.Error("ValidateTask accepted an invalid name")
+	}
+	if err := v1alpha1.ValidateWorkspace(&v1alpha1.Workspace{Metadata: &v1alpha1.ObjectMeta{Name: "Bad"}}); err == nil {
+		t.Error("ValidateWorkspace accepted an invalid name")
+	}
+	if err := v1alpha1.ValidateModel(&v1alpha1.Model{Metadata: &v1alpha1.ObjectMeta{Name: "Bad"}}); err == nil {
+		t.Error("ValidateModel accepted an invalid name")
+	}
+}
+
 func TestValidateTask(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -447,7 +490,7 @@ func TestValidateTask(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := v1alpha1.ValidateTask(&v1alpha1.Task{Spec: tt.spec})
+			err := v1alpha1.ValidateTask(&v1alpha1.Task{Metadata: &v1alpha1.ObjectMeta{Name: "task"}, Spec: tt.spec})
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -495,5 +538,60 @@ spec:
 	}
 	if !proto.Equal(&task, &back) {
 		t.Errorf("round trip changed the task:\n%s", out)
+	}
+}
+
+func TestWorkspace_Files_YAML(t *testing.T) {
+	wsYAML := `
+apiVersion: ax.io/v1alpha1
+kind: Workspace
+metadata:
+  name: files-demo
+spec:
+  files:
+    - path: AGENTS.md
+      content: "# Agent Guidelines\nFollow best practices."
+    - path: README.md
+      content: "# Demo Workspace\nWelcome!"
+`
+	var ws v1alpha1.Workspace
+	if err := yaml.Unmarshal([]byte(wsYAML), &ws); err != nil {
+		t.Fatalf("unmarshaling workspace: %v", err)
+	}
+	if len(ws.GetSpec().GetFiles()) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(ws.GetSpec().GetFiles()))
+	}
+	if ws.GetSpec().GetFiles()[0].GetPath() != "AGENTS.md" || ws.GetSpec().GetFiles()[0].GetContent() != "# Agent Guidelines\nFollow best practices." {
+		t.Errorf("unexpected file 0: %+v", ws.GetSpec().GetFiles()[0])
+	}
+	if ws.GetSpec().GetFiles()[1].GetPath() != "README.md" {
+		t.Errorf("unexpected file 1: %+v", ws.GetSpec().GetFiles()[1])
+	}
+
+	out, err := yaml.Marshal(&ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var back v1alpha1.Workspace
+	if err := yaml.Unmarshal(out, &back); err != nil {
+		t.Fatalf("round trip: %v", err)
+	}
+	if !proto.Equal(&ws, &back) {
+		t.Errorf("round trip changed workspace:\n%s", out)
+	}
+}
+
+func TestValidateWorkspace_Files(t *testing.T) {
+	ws := &v1alpha1.Workspace{
+		Metadata: &v1alpha1.ObjectMeta{Name: "valid-ws"},
+		Spec: &v1alpha1.WorkspaceSpec{
+			Files: []*v1alpha1.File{
+				{Path: "", Content: "missing path"},
+			},
+		},
+	}
+	if err := v1alpha1.ValidateWorkspace(ws); err == nil || !strings.Contains(err.Error(), "spec.files[0]: path is required") {
+		t.Errorf("expected path is required error, got %v", err)
 	}
 }
